@@ -2,7 +2,6 @@ import json
 from SPARQLWrapper import SPARQLWrapper, JSON
 import time
 
-# <-- MIGLIORAMENTO 3: Mappa dei prefissi per accorciare gli URI
 # Definiamo i prefissi comuni una sola volta per riutilizzarli.
 PREFIX_MAP = {
     "http://dbpedia.org/resource/": "dbr:",
@@ -97,7 +96,6 @@ def get_film_data_final_cleaned(endpoint_url, film_uri):
             if 'p' not in res or 'o' not in res:
                 continue
 
-            # <-- MIGLIORAMENTO 3: Applichiamo la compressione a ogni parte della tripla
             subject_short = shorten_uri(film_uri)
             predicate_short = shorten_uri(res['p']['value'])
             object_short = shorten_uri(res['o']['value'])
@@ -117,7 +115,6 @@ def get_film_data_final_cleaned(endpoint_url, film_uri):
 
         return {
             "title": page_title,
-            # Applichiamo la compressione anche qui per coerenza
             "subject_uri": shorten_uri(film_uri),
             "abstract": abstract,
             "triples": triples
@@ -142,7 +139,7 @@ def main():
     curated_data = []
     for i, uri in enumerate(film_uris):
         print(f"Processando film {i + 1}/{len(film_uris)}: {uri}")
-        time.sleep(0.5)
+        #time.sleep(0.5)
         data = get_film_data_final_cleaned(DBPEDIA_SPARQL_ENDPOINT, uri)
         if data:
             curated_data.append(data)

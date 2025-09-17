@@ -109,14 +109,14 @@ def get_film_data_final_cleaned(endpoint_url, film_uri):
         WHERE {
             # Seleziona tutte le triple uscenti dall'URI del film specificato.
             <%s> ?p ?o .
-
+            
             # Filtro "whitelist": include solo i predicati di interesse.
             FILTER(?p IN (
                 dbo:director, dbo:writer, dbo:starring, dbo:producer,
                 dbo:musicComposer, dbo:country, dbo:language, dbo:releaseDate,
                 dbo:distributor, dbo:cinematography, dbo:editing, dbo:imdbId
             ))
-
+            
             # Blocco opzionale per recuperare l'abstract, se esiste.
             OPTIONAL {
                 <%s> dbo:abstract ?abstract .

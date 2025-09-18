@@ -3,8 +3,8 @@ import random
 from tqdm import tqdm
 
 # --- CONFIGURAZIONE ---
-INPUT_JSON_FILE = "film_dataset.json"
-OUTPUT_CORPUS_FILE = "training_corpus.txt"
+INPUT_JSON_FILE = "film_dataset_1000.json"
+OUTPUT_CORPUS_FILE = "training_corpus_1000.txt"
 
 # Definiamo i token speciali come costanti per evitare errori di battitura
 # e per coerenza con la traccia del progetto.

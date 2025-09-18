@@ -197,8 +197,8 @@ def main():
     """
     # Definizione dei parametri di configurazione.
     DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-    FILM_LIMIT = 200
-    OUTPUT_FILE = "film_dataset.json"
+    FILM_LIMIT = 1000
+    OUTPUT_FILE = "film_dataset_1000.json"
 
     # Fase 1: Ottenimento della lista di URI dei film.
     film_uris = get_film_uris(DBPEDIA_SPARQL_ENDPOINT, FILM_LIMIT)

@@ -2,11 +2,13 @@ import json
 from collections import defaultdict
 from tqdm import tqdm
 
+# Tenta di importare il modulo 'regex'. Se non esiste, lo installa.
 try:
     import regex
 except ImportError:
     print("Modulo 'regex' non trovato. Tentativo di installazione...")
-    import subprocess, sys
+    import subprocess
+    import sys
 
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "regex"])
@@ -21,17 +23,19 @@ except ImportError:
 # -----------------------------------------------------------------------------
 # STEP 1: CONFIGURAZIONE
 # -----------------------------------------------------------------------------
+
 SPECIAL_TOKENS = [
     "<PAD>", "<UNK>", "<SOT>", "<EOT>", "<SUBJ>", "<PRED>", "<OBJ>",
     "<RDF2Text>", "<Text2RDF>", "<CONTINUERDF>", "<MASK>"
 ]
-VOCAB_SIZE = 16000
-CORPUS_FILE = "dataset/training_corpus.txt"
-TOKENIZER_FILE = "nanosocrates_tokenizer_prova.json"
+VOCAB_SIZE = 36000
+CORPUS_FILE = "../dataset/training_corpus_1000.txt"
+TOKENIZER_FILE = "tokenizer/nanosocrates_tokenizer_1000.json"
 
 # -----------------------------------------------------------------------------
-# STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE
+# STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE (LOGICA RIVISTA)
 # -----------------------------------------------------------------------------
+
 print("1/5 - Lettura e preparazione del corpus...")
 full_corpus = []
 with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
@@ -41,47 +45,61 @@ with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
             full_corpus.append(part)
 
 word_freqs = defaultdict(int)
+
+# Pattern per splittare MANTENENDO i token speciali
 special_tokens_pattern = f"({'|'.join(regex.escape(token) for token in SPECIAL_TOKENS)})"
 special_splitter = regex.compile(special_tokens_pattern)
+
+# Pattern per tokenizzare il testo "normale" (tutto ciò che non è un token speciale)
 base_tokenizer_pattern = regex.compile(r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+""")
 
 print("2/5 - Pre-tokenizzazione e calcolo delle frequenze...")
 for text in tqdm(full_corpus):
+    # Prima splittiamo per i token speciali
     chunks = [chunk for chunk in special_splitter.split(text) if chunk]
     for chunk in chunks:
         if chunk in SPECIAL_TOKENS:
+            # Se il chunk è un token speciale, contiamo quello
             word_freqs[chunk] += 1
         else:
+            # Altrimenti, tokenizziamo il chunk di testo normale
             for match in base_tokenizer_pattern.finditer(chunk):
                 word_freqs[match.group(0)] += 1
 
 # -----------------------------------------------------------------------------
 # STEP 3: CREAZIONE DEL VOCABOLARIO INIZIALE
 # -----------------------------------------------------------------------------
+
 alphabet = sorted(list(set("".join(word_freqs.keys()))))
 vocab = SPECIAL_TOKENS + [char for char in alphabet if char not in "".join(SPECIAL_TOKENS)]
 print(f"Vocabolario iniziale con {len(vocab)} token.")
+
 splits = {word: list(word) for word in word_freqs.keys() if word not in SPECIAL_TOKENS}
 
 
 # -----------------------------------------------------------------------------
 # STEP 4: IL CUORE DI BPE - TRAINING LOOP
 # -----------------------------------------------------------------------------
+
 def compute_pair_freqs(splits, word_freqs):
     pair_freqs = defaultdict(int)
     for word, freq in word_freqs.items():
-        if word in SPECIAL_TOKENS: continue
+        if word in SPECIAL_TOKENS:
+            continue
         split = splits.get(word)
-        if not split or len(split) < 2: continue
+        if not split or len(split) < 2:
+            continue
         for i in range(len(split) - 1):
-            pair_freqs[(split[i], split[i + 1])] += freq
+            pair = (split[i], split[i + 1])
+            pair_freqs[pair] += freq
     return pair_freqs
 
 
 def merge_pair(a, b, splits):
     new_splits = {}
     for word, split in splits.items():
-        i, new_split = 0, []
+        i = 0
+        new_split = []
         while i < len(split):
             if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
                 new_split.append(a + b)
@@ -95,6 +113,7 @@ def merge_pair(a, b, splits):
 
 ordered_merges = []
 print(f"3/5 - Addestramento BPE fino a {VOCAB_SIZE} token...")
+
 pbar = tqdm(total=VOCAB_SIZE - len(vocab))
 while len(vocab) < VOCAB_SIZE:
     pair_freqs = compute_pair_freqs(splits, word_freqs)
@@ -119,7 +138,8 @@ tokenizer_data = {
     "vocab": token_to_id,
     "merges": ordered_merges,
     "special_tokens": SPECIAL_TOKENS,
-    "special_tokens_pattern": special_tokens_pattern
+    "special_tokens_pattern": special_tokens_pattern,
+    "base_tokenizer_pattern": base_tokenizer_pattern.pattern
 }
 with open(TOKENIZER_FILE, 'w', encoding='utf-8') as f:
     json.dump(tokenizer_data, f, ensure_ascii=False, indent=2)
@@ -135,43 +155,42 @@ class NanoSocratesTokenizer:
         self.special_tokens = set(data['special_tokens'])
         self.id_to_token = {i: t for t, i in self.vocab.items()}
         self.unk_token_id = self.vocab.get("<UNK>", 0)
-        self.splitter = regex.compile(data['special_tokens_pattern'])
+        self.special_splitter = regex.compile(data['special_tokens_pattern'])
+        self.base_tokenizer = regex.compile(data['base_tokenizer_pattern'])
         self.cache = {}
 
     def tokenize(self, text):
-        # Splitta il testo mantenendo i token speciali come elementi separati
-        pre_tokenized_parts = [chunk for chunk in self.splitter.split(text) if chunk]
-
         final_tokens = []
-        for word in pre_tokenized_parts:
-            if word in self.special_tokens:
-                final_tokens.append(word)
+        chunks = [chunk for chunk in self.special_splitter.split(text) if chunk]
+
+        for chunk in chunks:
+            if chunk in self.special_tokens:
+                final_tokens.append(chunk)
                 continue
 
-            if word in self.cache:
-                final_tokens.extend(self.cache[word])
-                continue
+            # Pre-tokenize del chunk normale
+            words = [match.group(0) for match in self.base_tokenizer.finditer(chunk)]
 
-            # --- NUOVA LOGICA SEMPLIFICATA E CORRETTA ---
-            tokens = list(word)
+            for word in words:
+                if word in self.cache:
+                    final_tokens.extend(self.cache[word])
+                    continue
 
-            # Applica tutte le regole di unione in ordine
-            for pair in self.merges:
-                a, b = pair
-                i = 0
-                new_tokens = []
-                while i < len(tokens):
-                    if i < len(tokens) - 1 and tokens[i] == a and tokens[i + 1] == b:
-                        new_tokens.append(a + b)
-                        i += 2
-                    else:
-                        new_tokens.append(tokens[i])
-                        i += 1
-                tokens = new_tokens
+                split = list(word)
+                for a, b in self.merges:
+                    i = 0
+                    new_split = []
+                    while i < len(split):
+                        if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
+                            new_split.append(a + b)
+                            i += 2
+                        else:
+                            new_split.append(split[i])
+                            i += 1
+                    split = new_split
 
-            self.cache[word] = tokens
-            final_tokens.extend(tokens)
-
+                self.cache[word] = split
+                final_tokens.extend(split)
         return final_tokens
 
     def encode(self, text):
@@ -187,22 +206,27 @@ class NanoSocratesTokenizer:
 print("\n5/5 - Esempio di utilizzo del tokenizer addestrato:")
 try:
     tokenizer = NanoSocratesTokenizer(TOKENIZER_FILE)
+
     texts_to_test = [
         "<SOT> <SUBJ> dbr:Cabaret_(1972_film) <PRED> <MASK> <OBJ> dbr:Ralph_Burns <EOT>",
         "Caddyshack is a 1980 American sports comedy film directed by Harold Ramis <Text2RDF>",
         "<SOT> <SUBJ> dbr:California_(1947_film) <PRED> dbo:director <OBJ> dbr:John_Farrow <EOT> <RDF2Text>",
         "<SOT> <SUBJ> dbr:Cain_XVIII <PRED> dbo:imdbId <OBJ> 0176875 <EOT> <CONTINUERDF>"
     ]
+
     for i, text in enumerate(texts_to_test):
         print(f"\n--- Test {i + 1} ---")
         print(f"Testo Originale: {text}")
+
         tokens = tokenizer.tokenize(text)
         print(f"Token: {tokens}")
-        ids = tokenizer.encode(text)
-        decoded_text = tokenizer.decode(ids)
+
+        decoded_text = tokenizer.decode(tokenizer.encode(text))
         print(f"Testo decodificato: {decoded_text}")
-        assert decoded_text == text, f"La decodifica non corrisponde all'originale! Test n.{i + 1}"
-        print(f"Test {i + 1} superato: Decodifica corretta.")
+
+        assert decoded_text == text, "La decodifica non corrisponde all'originale!"
+        print("Test superato: Decodifica corretta.")
+
 except FileNotFoundError:
     print(f"\nErrore: Il file del tokenizer '{TOKENIZER_FILE}' non è stato trovato.")
 except Exception as e:

@@ -215,29 +215,53 @@ class NanoSocratesTokenizer:
 
 
 # -----------------------------------------------------------------------------
-# ESEMPIO D'USO
+# ESEMPIO D'USO (AGGIORNATO CON ESEMPI DAL TUO CORPUS)
 # -----------------------------------------------------------------------------
 print("\n5/5 - Esempio di utilizzo del tokenizer addestrato:")
 
 # Carichiamo il tokenizer appena addestrato
 tokenizer = NanoSocratesTokenizer(TOKENIZER_FILE)
 
-# Esempio 1: Task RDF Completion 1
-text1 = "<SOT> <SUBJ> dbr:Inception <PRED> dbo:director <OBJ> <MASK> <EOT>"
+# --- Esempio 1: Task RDF Completion 1 (Masked Language Modeling) ---
+# Preso direttamente dal tuo training_corpus.txt
+text1 = "<SOT> <SUBJ> dbr:Cabaret_(1972_film) <PRED> <MASK> <OBJ> dbr:Ralph_Burns <EOT>"
 tokens1 = tokenizer.tokenize(text1)
 ids1 = tokenizer.encode(text1)
 
-print(f"\nTesto Originale 1: {text1}")
+print(f"\nTesto Originale 1 (RDF Completion 1): {text1}")
 print(f"Token: {tokens1}")
 print(f"IDs: {ids1}")
 print(f"Testo decodificato: {tokenizer.decode(ids1)}")
 
-# Esempio 2: Task Text2RDF
-text2 = "Christopher Nolan directed the movie Inception. <Text2RDF>"
+# --- Esempio 2: Task Text2RDF ---
+# Preso direttamente dal tuo training_corpus.txt
+text2 = "Caddyshack is a 1980 American sports comedy film directed by Harold Ramis <Text2RDF>"
 tokens2 = tokenizer.tokenize(text2)
 ids2 = tokenizer.encode(text2)
 
-print(f"\nTesto Originale 2: {text2}")
+print(f"\nTesto Originale 2 (Text2RDF): {text2}")
 print(f"Token: {tokens2}")
 print(f"IDs: {ids2}")
 print(f"Testo decodificato: {tokenizer.decode(ids2)}")
+
+# --- Esempio 3: Task RDF2Text ---
+# Preso direttamente dal tuo training_corpus.txt
+text3 = "<SOT> <SUBJ> dbr:California_(1947_film) <PRED> dbo:director <OBJ> dbr:John_Farrow <EOT> <RDF2Text>"
+tokens3 = tokenizer.tokenize(text3)
+ids3 = tokenizer.encode(text3)
+
+print(f"\nTesto Originale 3 (RDF2Text): {text3}")
+print(f"Token: {tokens3}")
+print(f"IDs: {ids3}")
+print(f"Testo decodificato: {tokenizer.decode(ids3)}")
+
+# --- Esempio 4: Task RDF Completion 2 (RDF Generation) ---
+# Preso direttamente dal tuo training_corpus.txt
+text4 = "<SOT> <SUBJ> dbr:Cain_XVIII <PRED> dbo:imdbId <OBJ> 0176875 <EOT> <CONTINUERDF>"
+tokens4 = tokenizer.tokenize(text4)
+ids4 = tokenizer.encode(text4)
+
+print(f"\nTesto Originale 4 (RDF Completion 2): {text4}")
+print(f"Token: {tokens4}")
+print(f"IDs: {ids4}")
+print(f"Testo decodificato: {tokenizer.decode(ids4)}")

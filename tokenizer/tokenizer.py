@@ -2,7 +2,6 @@ import json
 from collections import defaultdict
 from tqdm import tqdm
 
-# Tenta di importare il modulo 'regex'. Se non esiste, lo installa.
 try:
     import regex
 except ImportError:

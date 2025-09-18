@@ -28,9 +28,9 @@ SPECIAL_TOKENS = [
     "<PAD>", "<UNK>", "<SOT>", "<EOT>", "<SUBJ>", "<PRED>", "<OBJ>",
     "<RDF2Text>", "<Text2RDF>", "<CONTINUERDF>", "<MASK>"
 ]
-VOCAB_SIZE = 36000
+VOCAB_SIZE = 34000
 CORPUS_FILE = "../dataset/training_corpus_1000.txt"
-TOKENIZER_FILE = "tokenizer/nanosocrates_tokenizer_1000.json"
+TOKENIZER_FILE = "nanosocrates_tokenizer_1000.json"
 
 # -----------------------------------------------------------------------------
 # STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE (LOGICA RIVISTA)

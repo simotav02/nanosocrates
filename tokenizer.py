@@ -1,7 +1,7 @@
 import re
 import json
 from collections import defaultdict
-from tqdm import tqdm  # Per una bella barra di progresso
+from tqdm import tqdm
 
 # -----------------------------------------------------------------------------
 # STEP 1: CONFIGURAZIONE E DEFINIZIONE DEI TOKEN SPECIALI
@@ -29,21 +29,45 @@ with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
             full_corpus.append(part)
 
 word_freqs = defaultdict(int)
-# Regex migliorata per gestire gli spazi in modo più coerente
-pre_tokenizer_regex = r"(<SOT>|<EOT>|<SUBJ>|<PRED>|<OBJ>|<RDF2Text>|<Text2RDF>|<CONTINUERDF>|<MASK>|'s|'t|'re|'ve|'m|'ll|'d| ?[a-zA-Z]+| ?[0-9]+| ?[^\s\w]+|\s+(?!\S)|\s+)"
+
+# --- MODIFICA CHIAVE #1: REGEX MIGLIORATA ---
+# Questa regex è ispirata a quella di GPT-2. Isola i token speciali
+# e poi gestisce le parole, i numeri e la punteggiatura in modo più robusto.
+# Lo spazio viene considerato parte del token successivo.
+special_tokens_pattern = "|".join(re.escape(token) for token in SPECIAL_TOKENS)
+pre_tokenizer_regex = re.compile(
+    rf"""({special_tokens_pattern})|'s|'t|'re|'ve|'m|'ll|'d| ?\p{{L}}+| ?\p{{N}}+| ?[^\s\p{{L}}\p{{N}}]+|\s+(?!\S)|\s+""",
+    re.UNICODE)
 
 print("2/5 - Pre-tokenizzazione e calcolo delle frequenze...")
+# Dobbiamo installare il modulo 'regex' che ha un supporto Unicode migliore
+try:
+    import regex
+except ImportError:
+    print("Installando il modulo 'regex'... Esegui di nuovo lo script dopo l'installazione.")
+    import subprocess
+    import sys
+
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "regex"])
+    import regex
+
+pre_tokenizer_regex = regex.compile(
+    rf"""({special_tokens_pattern})|'s|'t|'re|'ve|'m|'ll|'d| ?\p{{L}}+| ?\p{{N}}+| ?[^\s\p{{L}}\p{{N}}]+|\s+(?!\S)|\s+""")
+
 for text in tqdm(full_corpus):
-    words = re.findall(pre_tokenizer_regex, text)
+    words = pre_tokenizer_regex.findall(text)
     for word in words:
-        word_freqs[word] += 1
+        if word:  # Assicuriamoci di non aggiungere stringhe vuote
+            word_freqs[word] += 1
 
 # -----------------------------------------------------------------------------
 # STEP 3: CREAZIONE DEL VOCABOLARIO INIZIALE
 # -----------------------------------------------------------------------------
 
 alphabet = sorted(list(set("".join(word_freqs.keys()))))
-vocab = SPECIAL_TOKENS + alphabet
+# Includiamo i token speciali nel vocabolario iniziale.
+# I token speciali non verranno mai uniti o spezzati.
+vocab = SPECIAL_TOKENS + [char for char in alphabet if char not in "".join(SPECIAL_TOKENS)]
 print(f"Vocabolario iniziale con {len(vocab)} token.")
 
 splits = {word: list(word) for word in word_freqs.keys()}
@@ -56,6 +80,9 @@ splits = {word: list(word) for word in word_freqs.keys()}
 def compute_pair_freqs(splits, word_freqs):
     pair_freqs = defaultdict(int)
     for word, freq in word_freqs.items():
+        # I token speciali non devono essere ulteriormente spezzati o uniti
+        if word in SPECIAL_TOKENS:
+            continue
         split = splits[word]
         if len(split) < 2:
             continue
@@ -69,6 +96,9 @@ def merge_pair(a, b, splits, word_freqs):
     merged_token = a + b
     new_splits = {}
     for word in word_freqs:
+        if word in SPECIAL_TOKENS:
+            new_splits[word] = [word]
+            continue
         split = splits[word]
         i = 0
         new_split = []
@@ -106,7 +136,7 @@ pbar.close()
 print("Addestramento BPE completato.")
 
 # -----------------------------------------------------------------------------
-# STEP 5: SALVATAGGIO DEL TOKENIZER E CLASSE HELPER (CORRETTA)
+# STEP 5: SALVATAGGIO DEL TOKENIZER E CLASSE HELPER
 # -----------------------------------------------------------------------------
 
 print("4/5 - Salvataggio del tokenizer in formato JSON...")
@@ -136,29 +166,34 @@ class NanoSocratesTokenizer:
         self.id_to_token = {i: t for t, i in self.vocab.items()}
         self.unk_token_id = self.vocab.get("<UNK>", 0)
 
-        # Compiliamo la regex una sola volta per efficienza
-        self.regex = re.compile(pre_tokenizer_regex)
+        special_tokens_pattern = "|".join(re.escape(token) for token in self.special_tokens)
+        self.regex = regex.compile(
+            rf"""({special_tokens_pattern})|'s|'t|'re|'ve|'m|'ll|'d| ?\p{{L}}+| ?\p{{N}}+| ?[^\s\p{{L}}\p{{N}}]+|\s+(?!\S)|\s+""")
 
     def tokenize(self, text):
-        # 1. Pre-tokenizzazione
-        words = self.regex.findall(text)
+        pre_tokenized_parts = [word for word in self.regex.findall(text) if word]
 
-        # 2. Dividi ogni "parola" nei suoi caratteri
-        splits = [list(word) for word in words]
+        splits = []
+        for word in pre_tokenized_parts:
+            if word in self.special_tokens:
+                splits.append([word])
+                continue
 
-        # 3. Applica iterativamente le regole di unione in ordine
-        for pair in self.merges:
-            a, b = pair
-            for i, split in enumerate(splits):
-                j = 0
-                while j < len(split) - 1:
-                    if split[j] == a and split[j + 1] == b:
-                        split = split[:j] + [a + b] + split[j + 2:]
+            split = list(word)
+
+            for a, b in self.merges:
+                i = 0
+                new_split = []
+                while i < len(split):
+                    if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
+                        new_split.append(a + b)
+                        i += 2
                     else:
-                        j += 1
-                splits[i] = split
+                        new_split.append(split[i])
+                        i += 1
+                split = new_split
+            splits.append(split)
 
-        # 4. Concatena i risultati
         return [token for split in splits for token in split]
 
     def encode(self, text):
@@ -166,8 +201,11 @@ class NanoSocratesTokenizer:
         return [self.vocab.get(token, self.unk_token_id) for token in tokens]
 
     def decode(self, ids):
-        tokens = [self.id_to_token.get(id, "<UNK>") for id in ids]
-        return "".join(tokens)
+        # --- MODIFICA CHIAVE #2: DECODIFICA CORRETTA ---
+        # Unisce semplicemente i token. Dal momento che la pre-tokenizzazione
+        # ha mantenuto gli spazi come prefissi, questo ricostruirà il testo
+        # correttamente.
+        return "".join([self.id_to_token.get(id, "<UNK>") for id in ids])
 
 
 # -----------------------------------------------------------------------------
@@ -222,4 +260,7 @@ except FileNotFoundError:
     print(f"\nErrore: Il file del tokenizer '{TOKENIZER_FILE}' non è stato trovato.")
     print("Assicurati di aver eseguito lo script per intero per creare il file.")
 except Exception as e:
+    import traceback
+
     print(f"\nSi è verificato un errore inaspettato: {e}")
+    traceback.print_exc()

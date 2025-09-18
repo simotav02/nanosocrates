@@ -2,13 +2,11 @@ import json
 from collections import defaultdict
 from tqdm import tqdm
 
-# Tenta di importare il modulo 'regex'. Se non esiste, lo installa.
 try:
     import regex
 except ImportError:
     print("Modulo 'regex' non trovato. Tentativo di installazione...")
-    import subprocess
-    import sys
+    import subprocess, sys
 
     try:
         subprocess.check_call([sys.executable, "-m", "pip", "install", "regex"])
@@ -23,19 +21,17 @@ except ImportError:
 # -----------------------------------------------------------------------------
 # STEP 1: CONFIGURAZIONE
 # -----------------------------------------------------------------------------
-
 SPECIAL_TOKENS = [
     "<PAD>", "<UNK>", "<SOT>", "<EOT>", "<SUBJ>", "<PRED>", "<OBJ>",
     "<RDF2Text>", "<Text2RDF>", "<CONTINUERDF>", "<MASK>"
 ]
 VOCAB_SIZE = 16000
 CORPUS_FILE = "dataset/training_corpus.txt"
-TOKENIZER_FILE = "nanosocrates_tokenizer_1000.json"  # Rinominiamo per chiarezza
+TOKENIZER_FILE = "nanosocrates_tokenizer_prova.json"
 
 # -----------------------------------------------------------------------------
 # STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE
 # -----------------------------------------------------------------------------
-
 print("1/5 - Lettura e preparazione del corpus...")
 full_corpus = []
 with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
@@ -62,7 +58,6 @@ for text in tqdm(full_corpus):
 # -----------------------------------------------------------------------------
 # STEP 3: CREAZIONE DEL VOCABOLARIO INIZIALE
 # -----------------------------------------------------------------------------
-
 alphabet = sorted(list(set("".join(word_freqs.keys()))))
 vocab = SPECIAL_TOKENS + [char for char in alphabet if char not in "".join(SPECIAL_TOKENS)]
 print(f"Vocabolario iniziale con {len(vocab)} token.")
@@ -72,7 +67,6 @@ splits = {word: list(word) for word in word_freqs.keys() if word not in SPECIAL_
 # -----------------------------------------------------------------------------
 # STEP 4: IL CUORE DI BPE - TRAINING LOOP
 # -----------------------------------------------------------------------------
-
 def compute_pair_freqs(splits, word_freqs):
     pair_freqs = defaultdict(int)
     for word, freq in word_freqs.items():
@@ -137,52 +131,46 @@ class NanoSocratesTokenizer:
         with open(tokenizer_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         self.vocab = data['vocab']
+        self.merges = [tuple(p) for p in data['merges']]
         self.special_tokens = set(data['special_tokens'])
         self.id_to_token = {i: t for t, i in self.vocab.items()}
         self.unk_token_id = self.vocab.get("<UNK>", 0)
-
-        # --- LOGICA CORRETTA ---
-        # Convertiamo la lista di merge in un dizionario con la priorità (rank)
-        self.merges = {tuple(p): i for i, p in enumerate(data['merges'])}
-
         self.splitter = regex.compile(data['special_tokens_pattern'])
         self.cache = {}
 
     def tokenize(self, text):
-        final_tokens = []
         # Splitta il testo mantenendo i token speciali come elementi separati
-        chunks = [chunk for chunk in self.splitter.split(text) if chunk]
+        pre_tokenized_parts = [chunk for chunk in self.splitter.split(text) if chunk]
 
-        for chunk in chunks:
-            if chunk in self.special_tokens:
-                final_tokens.append(chunk)
+        final_tokens = []
+        for word in pre_tokenized_parts:
+            if word in self.special_tokens:
+                final_tokens.append(word)
                 continue
 
-            # Per i chunk di testo normale, applichiamo la logica BPE
-            if chunk in self.cache:
-                final_tokens.extend(self.cache[chunk])
+            if word in self.cache:
+                final_tokens.extend(self.cache[word])
                 continue
 
-            # Inizializza la parola come una lista di caratteri
-            word_tokens = list(chunk)
+            # --- NUOVA LOGICA SEMPLIFICATA E CORRETTA ---
+            tokens = list(word)
 
-            while len(word_tokens) > 1:
-                # Trova la prossima coppia da unire con la priorità più alta (rank più basso)
-                pairs = {(word_tokens[i], word_tokens[i + 1]): i for i in range(len(word_tokens) - 1)}
+            # Applica tutte le regole di unione in ordine
+            for pair in self.merges:
+                a, b = pair
+                i = 0
+                new_tokens = []
+                while i < len(tokens):
+                    if i < len(tokens) - 1 and tokens[i] == a and tokens[i + 1] == b:
+                        new_tokens.append(a + b)
+                        i += 2
+                    else:
+                        new_tokens.append(tokens[i])
+                        i += 1
+                tokens = new_tokens
 
-                best_pair_to_merge = min(pairs, key=lambda p: self.merges.get(p, float('inf')))
-
-                # Se nessuna delle coppie nella parola è nei nostri merge, abbiamo finito
-                if best_pair_to_merge not in self.merges:
-                    break
-
-                # Altrimenti, eseguiamo il merge
-                idx = pairs[best_pair_to_merge]
-                word_tokens = word_tokens[:idx] + [best_pair_to_merge[0] + best_pair_to_merge[1]] + word_tokens[
-                                                                                                    idx + 2:]
-
-            self.cache[chunk] = word_tokens
-            final_tokens.extend(word_tokens)
+            self.cache[word] = tokens
+            final_tokens.extend(tokens)
 
         return final_tokens
 

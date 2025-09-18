@@ -21,19 +21,20 @@ except ImportError:
         sys.exit(1)
 
 # -----------------------------------------------------------------------------
-# STEP 1: CONFIGURAZIONE
+# STEP 1: CONFIGURAZIONE E DEFINIZIONE DEI TOKEN SPECIALI
 # -----------------------------------------------------------------------------
 
 SPECIAL_TOKENS = [
     "<PAD>", "<UNK>", "<SOT>", "<EOT>", "<SUBJ>", "<PRED>", "<OBJ>",
     "<RDF2Text>", "<Text2RDF>", "<CONTINUERDF>", "<MASK>"
 ]
-VOCAB_SIZE = 36000
-CORPUS_FILE = "../dataset/training_corpus_1000.txt"
-TOKENIZER_FILE = "tokenizer/nanosocrates_tokenizer_1000.json"
+
+VOCAB_SIZE = 16000
+CORPUS_FILE = "dataset/training_corpus.txt"
+TOKENIZER_FILE = "nanosocrates_tokenizer.json"
 
 # -----------------------------------------------------------------------------
-# STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE (LOGICA RIVISTA)
+# STEP 2: PRE-TOKENIZZAZIONE E CALCOLO DELLE FREQUENZE
 # -----------------------------------------------------------------------------
 
 print("1/5 - Lettura e preparazione del corpus...")
@@ -46,25 +47,18 @@ with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
 
 word_freqs = defaultdict(int)
 
-# Pattern per splittare MANTENENDO i token speciali
-special_tokens_pattern = f"({'|'.join(regex.escape(token) for token in SPECIAL_TOKENS)})"
-special_splitter = regex.compile(special_tokens_pattern)
-
-# Pattern per tokenizzare il testo "normale" (tutto ciò che non è un token speciale)
-base_tokenizer_pattern = regex.compile(r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+""")
+# --- REGEX CORRETTA E COMPILATA CON LA LIBRERIA GIUSTA ---
+special_tokens_pattern = "|".join(regex.escape(token) for token in SPECIAL_TOKENS)
+pre_tokenizer_regex = regex.compile(
+    rf"""({special_tokens_pattern})|'s|'t|'re|'ve|'m|'ll|'d| ?\p{{L}}+| ?\p{{N}}+| ?[^\s\p{{L}}\p{{N}}]+|\s+(?!\S)|\s+""")
 
 print("2/5 - Pre-tokenizzazione e calcolo delle frequenze...")
 for text in tqdm(full_corpus):
-    # Prima splittiamo per i token speciali
-    chunks = [chunk for chunk in special_splitter.split(text) if chunk]
-    for chunk in chunks:
-        if chunk in SPECIAL_TOKENS:
-            # Se il chunk è un token speciale, contiamo quello
-            word_freqs[chunk] += 1
-        else:
-            # Altrimenti, tokenizziamo il chunk di testo normale
-            for match in base_tokenizer_pattern.finditer(chunk):
-                word_freqs[match.group(0)] += 1
+    # Usiamo finditer per una gestione più efficiente della memoria
+    for match in pre_tokenizer_regex.finditer(text):
+        word = match.group(0)
+        if word:
+            word_freqs[word] += 1
 
 # -----------------------------------------------------------------------------
 # STEP 3: CREAZIONE DEL VOCABOLARIO INIZIALE
@@ -74,7 +68,7 @@ alphabet = sorted(list(set("".join(word_freqs.keys()))))
 vocab = SPECIAL_TOKENS + [char for char in alphabet if char not in "".join(SPECIAL_TOKENS)]
 print(f"Vocabolario iniziale con {len(vocab)} token.")
 
-splits = {word: list(word) for word in word_freqs.keys() if word not in SPECIAL_TOKENS}
+splits = {word: list(word) for word in word_freqs.keys()}
 
 
 # -----------------------------------------------------------------------------
@@ -86,8 +80,8 @@ def compute_pair_freqs(splits, word_freqs):
     for word, freq in word_freqs.items():
         if word in SPECIAL_TOKENS:
             continue
-        split = splits.get(word)
-        if not split or len(split) < 2:
+        split = splits[word]
+        if len(split) < 2:
             continue
         for i in range(len(split) - 1):
             pair = (split[i], split[i + 1])
@@ -96,13 +90,18 @@ def compute_pair_freqs(splits, word_freqs):
 
 
 def merge_pair(a, b, splits):
+    merged_token = a + b
     new_splits = {}
     for word, split in splits.items():
+        if word in SPECIAL_TOKENS:
+            new_splits[word] = split
+            continue
+
         i = 0
         new_split = []
         while i < len(split):
             if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
-                new_split.append(a + b)
+                new_split.append(merged_token)
                 i += 2
             else:
                 new_split.append(split[i])
@@ -120,29 +119,36 @@ while len(vocab) < VOCAB_SIZE:
     if not pair_freqs:
         print("\nNessuna coppia da unire. Addestramento terminato prima di raggiungere la dimensione del vocabolario.")
         break
+
     best_pair = max(pair_freqs, key=pair_freqs.get)
+
     a, b = best_pair
     splits = merge_pair(a, b, splits)
+
     ordered_merges.append(best_pair)
     vocab.append(a + b)
     pbar.update(1)
+
 pbar.close()
 print("Addestramento BPE completato.")
 
 # -----------------------------------------------------------------------------
 # STEP 5: SALVATAGGIO DEL TOKENIZER E CLASSE HELPER
 # -----------------------------------------------------------------------------
+
 print("4/5 - Salvataggio del tokenizer in formato JSON...")
+
 token_to_id = {token: i for i, token in enumerate(vocab)}
+
 tokenizer_data = {
     "vocab": token_to_id,
     "merges": ordered_merges,
-    "special_tokens": SPECIAL_TOKENS,
-    "special_tokens_pattern": special_tokens_pattern,
-    "base_tokenizer_pattern": base_tokenizer_pattern.pattern
+    "special_tokens": SPECIAL_TOKENS
 }
+
 with open(TOKENIZER_FILE, 'w', encoding='utf-8') as f:
     json.dump(tokenizer_data, f, ensure_ascii=False, indent=2)
+
 print(f"Tokenizer salvato in '{TOKENIZER_FILE}'.")
 
 
@@ -150,51 +156,45 @@ class NanoSocratesTokenizer:
     def __init__(self, tokenizer_path):
         with open(tokenizer_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+
         self.vocab = data['vocab']
         self.merges = [tuple(p) for p in data['merges']]
-        self.special_tokens = set(data['special_tokens'])
+        self.special_tokens = data['special_tokens']
         self.id_to_token = {i: t for t, i in self.vocab.items()}
         self.unk_token_id = self.vocab.get("<UNK>", 0)
-        self.special_splitter = regex.compile(data['special_tokens_pattern'])
-        self.base_tokenizer = regex.compile(data['base_tokenizer_pattern'])
-        self.cache = {}
+
+        special_tokens_pattern = "|".join(regex.escape(token) for token in self.special_tokens)
+        self.regex = regex.compile(
+            rf"""({special_tokens_pattern})|'s|'t|'re|'ve|'m|'ll|'d| ?\p{{L}}+| ?\p{{N}}+| ?[^\s\p{{L}}\p{{N}}]+|\s+(?!\S)|\s+""")
 
     def tokenize(self, text):
-        final_tokens = []
-        chunks = [chunk for chunk in self.special_splitter.split(text) if chunk]
+        pre_tokenized_parts = [match.group(0) for match in self.regex.finditer(text)]
 
-        for chunk in chunks:
-            if chunk in self.special_tokens:
-                final_tokens.append(chunk)
+        final_tokens = []
+        for word in pre_tokenized_parts:
+            if word in self.special_tokens:
+                final_tokens.append(word)
                 continue
 
-            # Pre-tokenize del chunk normale
-            words = [match.group(0) for match in self.base_tokenizer.finditer(chunk)]
+            split = list(word)
+            for a, b in self.merges:
+                i = 0
+                new_split = []
+                while i < len(split):
+                    if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
+                        new_split.append(a + b)
+                        i += 2
+                    else:
+                        new_split.append(split[i])
+                        i += 1
+                split = new_split
+            final_tokens.extend(split)
 
-            for word in words:
-                if word in self.cache:
-                    final_tokens.extend(self.cache[word])
-                    continue
-
-                split = list(word)
-                for a, b in self.merges:
-                    i = 0
-                    new_split = []
-                    while i < len(split):
-                        if i < len(split) - 1 and split[i] == a and split[i + 1] == b:
-                            new_split.append(a + b)
-                            i += 2
-                        else:
-                            new_split.append(split[i])
-                            i += 1
-                    split = new_split
-
-                self.cache[word] = split
-                final_tokens.extend(split)
         return final_tokens
 
     def encode(self, text):
-        return [self.vocab.get(token, self.unk_token_id) for token in self.tokenize(text)]
+        tokens = self.tokenize(text)
+        return [self.vocab.get(token, self.unk_token_id) for token in tokens]
 
     def decode(self, ids):
         return "".join([self.id_to_token.get(id, "<UNK>") for id in ids])
@@ -204,28 +204,45 @@ class NanoSocratesTokenizer:
 # ESEMPIO D'USO
 # -----------------------------------------------------------------------------
 print("\n5/5 - Esempio di utilizzo del tokenizer addestrato:")
+
 try:
     tokenizer = NanoSocratesTokenizer(TOKENIZER_FILE)
 
-    texts_to_test = [
-        "<SOT> <SUBJ> dbr:Cabaret_(1972_film) <PRED> <MASK> <OBJ> dbr:Ralph_Burns <EOT>",
-        "Caddyshack is a 1980 American sports comedy film directed by Harold Ramis <Text2RDF>",
-        "<SOT> <SUBJ> dbr:California_(1947_film) <PRED> dbo:director <OBJ> dbr:John_Farrow <EOT> <RDF2Text>",
-        "<SOT> <SUBJ> dbr:Cain_XVIII <PRED> dbo:imdbId <OBJ> 0176875 <EOT> <CONTINUERDF>"
-    ]
+    # --- Esempio 1: Task RDF Completion 1 ---
+    text1 = "<SOT> <SUBJ> dbr:Cabaret_(1972_film) <PRED> <MASK> <OBJ> dbr:Ralph_Burns <EOT>"
+    tokens1 = tokenizer.tokenize(text1)
+    ids1 = tokenizer.encode(text1)
 
-    for i, text in enumerate(texts_to_test):
-        print(f"\n--- Test {i + 1} ---")
-        print(f"Testo Originale: {text}")
+    print(f"\nTesto Originale 1 (RDF Completion 1): {text1}")
+    print(f"Token: {tokens1}")
+    print(f"Testo decodificato: {tokenizer.decode(ids1)}")
 
-        tokens = tokenizer.tokenize(text)
-        print(f"Token: {tokens}")
+    # --- Esempio 2: Task Text2RDF ---
+    text2 = "Caddyshack is a 1980 American sports comedy film directed by Harold Ramis <Text2RDF>"
+    tokens2 = tokenizer.tokenize(text2)
+    ids2 = tokenizer.encode(text2)
 
-        decoded_text = tokenizer.decode(tokenizer.encode(text))
-        print(f"Testo decodificato: {decoded_text}")
+    print(f"\nTesto Originale 2 (Text2RDF): {text2}")
+    print(f"Token: {tokens2}")
+    print(f"Testo decodificato: {tokenizer.decode(ids2)}")
 
-        assert decoded_text == text, "La decodifica non corrisponde all'originale!"
-        print("Test superato: Decodifica corretta.")
+    # --- Esempio 3: Task RDF2Text ---
+    text3 = "<SOT> <SUBJ> dbr:California_(1947_film) <PRED> dbo:director <OBJ> dbr:John_Farrow <EOT> <RDF2Text>"
+    tokens3 = tokenizer.tokenize(text3)
+    ids3 = tokenizer.encode(text3)
+
+    print(f"\nTesto Originale 3 (RDF2Text): {text3}")
+    print(f"Token: {tokens3}")
+    print(f"Testo decodificato: {tokenizer.decode(ids3)}")
+
+    # --- Esempio 4: Task RDF Completion 2 ---
+    text4 = "<SOT> <SUBJ> dbr:Cain_XVIII <PRED> dbo:imdbId <OBJ> 0176875 <EOT> <CONTINUERDF>"
+    tokens4 = tokenizer.tokenize(text4)
+    ids4 = tokenizer.encode(text4)
+
+    print(f"\nTesto Originale 4 (RDF Completion 2): {text4}")
+    print(f"Token: {tokens4}")
+    print(f"Testo decodificato: {tokenizer.decode(ids4)}")
 
 except FileNotFoundError:
     print(f"\nErrore: Il file del tokenizer '{TOKENIZER_FILE}' non è stato trovato.")

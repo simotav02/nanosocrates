@@ -9,32 +9,35 @@ import warnings
 
 
 # ======================================================================================
-# STEP 4.1: ARCHITETTURA DEL MODELLO (dal codice del professore, adattato)
-# Questa sezione definisce tutti i blocchi costitutivi del Transformer.
-# Non sono necessarie modifiche qui, poiché l'architettura è già generica.
+# SEZIONE 1: ARCHITETTURA DEL MODELLO (model.py)
+# Questa sezione contiene la definizione completa del modello Transformer,
+# con i commenti originali del professore.
 # ======================================================================================
 
 class LayerNormalization(nn.Module):
-    def __init__(self, features: int, eps: float = 1e-6) -> None:
+    def __init__(self, features: int, eps: float = 10 ** -6) -> None:
         super().__init__()
         self.eps = eps
-        self.alpha = nn.Parameter(torch.ones(features))
-        self.bias = nn.Parameter(torch.zeros(features))
+        self.alpha = nn.Parameter(torch.ones(features))  # alpha is a learnable parameter
+        self.bias = nn.Parameter(torch.zeros(features))  # bias is a learnable parameter
 
     def forward(self, x):
-        mean = x.mean(dim=-1, keepdim=True)
-        std = x.std(dim=-1, keepdim=True)
+        # x: (batch, seq_len, hidden_size)
+        mean = x.mean(dim=-1, keepdim=True)  # (batch, seq_len, 1)
+        std = x.std(dim=-1, keepdim=True)  # (batch, seq_len, 1)
+        # eps is to prevent dividing by zero or when std is very small
         return self.alpha * (x - mean) / (std + self.eps) + self.bias
 
 
 class FeedForwardBlock(nn.Module):
     def __init__(self, d_model: int, d_ff: int, dropout: float) -> None:
         super().__init__()
-        self.linear_1 = nn.Linear(d_model, d_ff)
+        self.linear_1 = nn.Linear(d_model, d_ff)  # w1 and b1
         self.dropout = nn.Dropout(dropout)
-        self.linear_2 = nn.Linear(d_ff, d_model)
+        self.linear_2 = nn.Linear(d_ff, d_model)  # w2 and b2
 
     def forward(self, x):
+        # (batch, seq_len, d_model) --> (batch, seq_len, d_ff) --> (batch, seq_len, d_model)
         return self.linear_2(self.dropout(torch.relu(self.linear_1(x))))
 
 
@@ -46,6 +49,8 @@ class InputEmbeddings(nn.Module):
         self.embedding = nn.Embedding(vocab_size, d_model)
 
     def forward(self, x):
+        # (batch, seq_len) --> (batch, seq_len, d_model)
+        # Multiply by sqrt(d_model) to scale the embeddings according to the paper
         return self.embedding(x) * math.sqrt(self.d_model)
 
 
@@ -55,17 +60,23 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
         self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
-
+        # Create a matrix of shape (seq_len, d_model)
         pe = torch.zeros(seq_len, d_model)
-        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
+        # Create a vector of shape (seq_len)
+        position = torch.arange(0, seq_len, dtype=torch.float).unsqueeze(1)  # (seq_len, 1)
+        # Create a vector of shape (d_model)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))  # (d_model / 2)
+        # Apply sine to even indices
+        pe[:, 0::2] = torch.sin(position * div_term)  # sin(position * (10000 ** (2i / d_model))
+        # Apply cosine to odd indices
+        pe[:, 1::2] = torch.cos(position * div_term)  # cos(position * (10000 ** (2i / d_model))
+        # Add a batch dimension to the positional encoding
+        pe = pe.unsqueeze(0)  # (1, seq_len, d_model)
+        # Register the positional encoding as a buffer
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False)
+        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False)  # (batch, seq_len, d_model)
         return self.dropout(x)
 
 
@@ -82,36 +93,45 @@ class ResidualConnection(nn.Module):
 class MultiHeadAttentionBlock(nn.Module):
     def __init__(self, d_model: int, h: int, dropout: float) -> None:
         super().__init__()
-        self.d_model = d_model
-        self.h = h
+        self.d_model = d_model  # Embedding vector size
+        self.h = h  # Number of heads
+        # Make sure d_model is divisible by h
         assert d_model % h == 0, "d_model is not divisible by h"
-        self.d_k = d_model // h
-        self.w_q = nn.Linear(d_model, d_model, bias=False)
-        self.w_k = nn.Linear(d_model, d_model, bias=False)
-        self.w_v = nn.Linear(d_model, d_model, bias=False)
-        self.w_o = nn.Linear(d_model, d_model, bias=False)
+        self.d_k = d_model // h  # Dimension of vector seen by each head
+        self.w_q = nn.Linear(d_model, d_model, bias=False)  # Wq
+        self.w_k = nn.Linear(d_model, d_model, bias=False)  # Wk
+        self.w_v = nn.Linear(d_model, d_model, bias=False)  # Wv
+        self.w_o = nn.Linear(d_model, d_model, bias=False)  # Wo
         self.dropout = nn.Dropout(dropout)
 
     @staticmethod
     def attention(query, key, value, mask, dropout: nn.Dropout):
         d_k = query.shape[-1]
+        # (batch, h, seq_len, d_k) @ (batch, h, d_k, seq_len) --> (batch, h, seq_len, seq_len)
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
             attention_scores.masked_fill_(mask == 0, -1e9)
-        attention_scores = attention_scores.softmax(dim=-1)
+        attention_scores = attention_scores.softmax(dim=-1)  # (batch, h, seq_len, seq_len)
         if dropout is not None:
             attention_scores = dropout(attention_scores)
+        # (batch, h, seq_len, seq_len) @ (batch, h, seq_len, d_k) --> (batch, h, seq_len, d_k)
         return (attention_scores @ value), attention_scores
 
     def forward(self, q, k, v, mask):
-        query = self.w_q(q)
-        key = self.w_k(k)
-        value = self.w_v(v)
+        query = self.w_q(q)  # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        key = self.w_k(k)  # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        value = self.w_v(v)  # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        # (batch, seq_len, d_model) --> (batch, seq_len, h, d_k) --> (batch, h, seq_len, d_k)
         query = query.view(query.shape[0], query.shape[1], self.h, self.d_k).transpose(1, 2)
         key = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1, 2)
         value = value.view(value.shape[0], value.shape[1], self.h, self.d_k).transpose(1, 2)
+
         x, self.attention_scores = MultiHeadAttentionBlock.attention(query, key, value, mask, self.dropout)
+
+        # (batch, h, seq_len, d_k) --> (batch, seq_len, h, d_k) --> (batch, seq_len, d_model)
         x = x.transpose(1, 2).contiguous().view(x.shape[0], -1, self.h * self.d_k)
+
+        # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
         return self.w_o(x)
 
 
@@ -177,6 +197,7 @@ class ProjectionLayer(nn.Module):
         self.proj = nn.Linear(d_model, vocab_size)
 
     def forward(self, x) -> None:
+        # (batch, seq_len, d_model) --> (batch, seq_len, vocab_size)
         return self.proj(x)
 
 
@@ -193,28 +214,30 @@ class Transformer(nn.Module):
         self.projection_layer = projection_layer
 
     def encode(self, src, src_mask):
+        # (batch, seq_len, d_model)
         src = self.src_embed(src)
         src = self.src_pos(src)
         return self.encoder(src, src_mask)
 
     def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor, tgt_mask: torch.Tensor):
+        # (batch, seq_len, d_model)
         tgt = self.tgt_embed(tgt)
         tgt = self.tgt_pos(tgt)
         return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
 
     def project(self, x):
+        # (batch, seq_len, vocab_size)
         return self.projection_layer(x)
 
 
-def build_transformer(vocab_size: int, seq_len: int, d_model: int = 256, N: int = 2, h: int = 4, dropout: float = 0.1,
-                      d_ff: int = 1024) -> Transformer:
-    # Creazione degli embedding layers (condivisi)
+def build_transformer(vocab_size: int, seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1,
+                      d_ff: int = 2048) -> Transformer:
+    # Create the embedding layers
     embedding = InputEmbeddings(d_model, vocab_size)
-
-    # Creazione dei positional encoding layers (condivisi)
+    # Create the positional encoding layers
     positional_encoding = PositionalEncoding(d_model, seq_len, dropout)
 
-    # Creazione dei blocchi Encoder
+    # Create the encoder blocks
     encoder_blocks = []
     for _ in range(N):
         encoder_self_attention_block = MultiHeadAttentionBlock(d_model, h, dropout)
@@ -222,7 +245,7 @@ def build_transformer(vocab_size: int, seq_len: int, d_model: int = 256, N: int 
         encoder_block = EncoderBlock(d_model, encoder_self_attention_block, feed_forward_block, dropout)
         encoder_blocks.append(encoder_block)
 
-    # Creazione dei blocchi Decoder
+    # Create the decoder blocks
     decoder_blocks = []
     for _ in range(N):
         decoder_self_attention_block = MultiHeadAttentionBlock(d_model, h, dropout)
@@ -232,18 +255,18 @@ def build_transformer(vocab_size: int, seq_len: int, d_model: int = 256, N: int 
                                      feed_forward_block, dropout)
         decoder_blocks.append(decoder_block)
 
-    # Creazione di Encoder e Decoder
+    # Create the encoder and decoder
     encoder = Encoder(d_model, nn.ModuleList(encoder_blocks))
     decoder = Decoder(d_model, nn.ModuleList(decoder_blocks))
 
-    # Projection layer
+    # Create the projection layer
     projection_layer = ProjectionLayer(d_model, vocab_size)
 
-    # Creazione del Transformer
+    # Create the transformer
     transformer = Transformer(encoder, decoder, embedding, embedding, positional_encoding, positional_encoding,
                               projection_layer)
 
-    # Inizializzazione dei pesi
+    # Initialize the parameters
     for p in transformer.parameters():
         if p.dim() > 1:
             nn.init.xavier_uniform_(p)
@@ -252,33 +275,31 @@ def build_transformer(vocab_size: int, seq_len: int, d_model: int = 256, N: int 
 
 
 # ======================================================================================
-# STEP 4.2: CONFIGURAZIONE DEL MODELLO
-# Qui impostiamo tutti gli iperparametri seguendo gli HINTS della traccia.
+# SEZIONE 2: CONFIGURAZIONE (config.py)
 # ======================================================================================
 
 def get_config():
+    # Iperparametri basati sugli HINTS della traccia
     return {
         "batch_size": 16,
-        "num_epochs": 10,  # Inizia con poche epoche per il debug
+        "num_epochs": 10,
         "lr": 1e-4,
-        "seq_len": 256,  # HINT: Limita la lunghezza della sequenza
-        "d_model": 256,  # HINT: Usa una dimensione nascosta piccola
-        "d_ff": 1024,  # Dimensione del feed-forward (solitamente 4 * d_model)
-        "N": 3,  # HINT: Usa 2-4 layers per encoder/decoder
-        "h": 4,  # HINT: Usa 4-8 attention heads
+        "seq_len": 256,  # HINT: Limit the maximum sequence length (256 or 512)
+        "d_model": 256,  # HINT: Use a small hidden dimension (256 or 512)
+        "N": 3,  # HINT: A model with 2-4 encoder/decoder layers
+        "h": 4,  # HINT: A reduced number of attention heads (4 or 8)
+        "d_ff": 1024,  # Feed-forward hidden dimension
         "dropout": 0.1,
         "model_folder": "weights",
         "model_basename": "nanosocrates_",
-        "preload": None,  # "latest" per caricare l'ultimo modello salvato
-        "tokenizer_file": "nanosocrates_tokenizer.json",  # Il tuo tokenizer
-        "corpus_file": "training_corpus.txt"  # Il tuo corpus
+        "preload": None,
+        "tokenizer_file": "nanosocrates_tokenizer.json",
+        "corpus_file": "training_corpus.txt",
     }
 
 
 # ======================================================================================
-# STEP 4.3: CREAZIONE DEL DATASET PERSONALIZZATO
-# Questa classe `NanoSocratesDataset` è progettata per leggere il tuo file
-# `training_corpus.txt` e preparare i dati per il modello.
+# SEZIONE 3: GESTIONE DATASET (dataset.py)
 # ======================================================================================
 
 def causal_mask(size):
@@ -292,18 +313,12 @@ class NanoSocratesDataset(Dataset):
         self.seq_len = seq_len
         self.tokenizer = tokenizer
 
-        # Carica il corpus in memoria
         with open(corpus_path, 'r', encoding='utf-8') as f:
             self.lines = f.readlines()
 
-        # Ottieni gli ID dei token speciali dal tuo tokenizer
-        self.sot_token_id = self.tokenizer.token_to_id("<SOT>")
-        self.eot_token_id = self.tokenizer.token_to_id("<EOT>")
-        self.pad_token_id = self.tokenizer.token_to_id("<PAD>")
-
-        # Controlla che i token speciali esistano
-        if any(token_id is None for token_id in [self.sot_token_id, self.eot_token_id, self.pad_token_id]):
-            raise ValueError("Uno o più token speciali (<SOT>, <EOT>, <PAD>) non trovati nel tokenizer.")
+        self.sot_token = torch.tensor([tokenizer.token_to_id("<SOT>")], dtype=torch.int64)
+        self.eot_token = torch.tensor([tokenizer.token_to_id("<EOT>")], dtype=torch.int64)
+        self.pad_token = torch.tensor([tokenizer.token_to_id("<PAD>")], dtype=torch.int64)
 
     def __len__(self):
         return len(self.lines)
@@ -311,24 +326,16 @@ class NanoSocratesDataset(Dataset):
     def __getitem__(self, idx):
         line = self.lines[idx].strip()
         if '\t' not in line:
-            # Salta righe vuote o malformate
-            # In alternativa, puoi gestirle in modo più robusto
-            print(f"Attenzione: riga {idx + 1} malformata, la salto.")
-            return self.__getitem__((idx + 1) % len(self))  # Ritorna il prossimo elemento
+            return self.__getitem__((idx + 1) % len(self))
 
         src_text, tgt_text = line.split('\t', 1)
 
-        # Tokenizza l'input e l'output
         enc_input_tokens = self.tokenizer.encode(src_text).ids
         dec_input_tokens = self.tokenizer.encode(tgt_text).ids
 
-        # Calcola il padding necessario
-        # -1 per il token <EOT> aggiunto alla fine di enc_input
         enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 1
-        # -1 per il token <SOT> all'inizio e -1 per <EOT> alla fine di dec_input
         dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1
 
-        # Tronca le sequenze se sono troppo lunghe
         if enc_num_padding_tokens < 0:
             enc_input_tokens = enc_input_tokens[:self.seq_len - 1]
             enc_num_padding_tokens = 0
@@ -336,138 +343,130 @@ class NanoSocratesDataset(Dataset):
             dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
             dec_num_padding_tokens = 0
 
-        # Crea i tensori per l'encoder e il decoder
         encoder_input = torch.cat([
             torch.tensor(enc_input_tokens, dtype=torch.int64),
-            torch.tensor([self.eot_token_id], dtype=torch.int64),  # Aggiungiamo <EOT> per segnalare la fine dell'input
-            torch.tensor([self.pad_token_id] * enc_num_padding_tokens, dtype=torch.int64),
-        ])
+            self.eot_token,
+            torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
+        ], dim=0)
 
-        # L'input del decoder inizia con <SOT>
         decoder_input = torch.cat([
-            torch.tensor([self.sot_token_id], dtype=torch.int64),
+            self.sot_token,
             torch.tensor(dec_input_tokens, dtype=torch.int64),
-            torch.tensor([self.pad_token_id] * dec_num_padding_tokens, dtype=torch.int64),
-        ])
+            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+        ], dim=0)
 
-        # L'etichetta (label) finisce con <EOT>
         label = torch.cat([
             torch.tensor(dec_input_tokens, dtype=torch.int64),
-            torch.tensor([self.eot_token_id], dtype=torch.int64),
-            torch.tensor([self.pad_token_id] * dec_num_padding_tokens, dtype=torch.int64),
-        ])
+            self.eot_token,
+            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+        ], dim=0)
 
-        # Assicurati che le dimensioni siano corrette
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
 
         return {
-            "encoder_input": encoder_input,
-            "decoder_input": decoder_input,
-            "encoder_mask": (encoder_input != self.pad_token_id).unsqueeze(0).unsqueeze(0).int(),  # (1, 1, seq_len)
-            "decoder_mask": (decoder_input != self.pad_token_id).unsqueeze(0).int() & causal_mask(
-                decoder_input.size(0)),  # (1, seq_len) & (1, seq_len, seq_len)
-            "label": label,
+            "encoder_input": encoder_input,  # (seq_len)
+            "decoder_input": decoder_input,  # (seq_len)
+            "encoder_mask": (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(),  # (1, 1, seq_len)
+            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).int() & causal_mask(decoder_input.size(0)),
+            # (1, seq_len) & (1, seq_len, seq_len)
+            "label": label,  # (seq_len)
             "src_text": src_text,
             "tgt_text": tgt_text,
         }
 
 
 # ======================================================================================
-# STEP 4.4: LOGICA DI TRAINING
-# Questa è la funzione principale che orchestra la creazione del modello,
-# il caricamento dei dati e il ciclo di addestramento.
+# SEZIONE 4: LOGICA DI TRAINING (train.py)
 # ======================================================================================
 
 def get_ds(config):
-    # Carica il tokenizer custom
     tokenizer = Tokenizer.from_file(config['tokenizer_file'])
 
-    # Crea il dataset
     dataset = NanoSocratesDataset(config['corpus_file'], tokenizer, config['seq_len'])
 
-    # Suddividi in training e validation set (90% training, 10% validation)
     train_ds_size = int(0.9 * len(dataset))
     val_ds_size = len(dataset) - train_ds_size
     train_ds, val_ds = random_split(dataset, [train_ds_size, val_ds_size])
 
-    # Crea i DataLoader
     train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)  # Batch size 1 per la validazione
+    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)
 
     return train_dataloader, val_dataloader, tokenizer
 
 
-def train_model(config):
-    # Seleziona il device (GPU se disponibile)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
-
-    # Carica dataloader e tokenizer
-    train_dataloader, val_dataloader, tokenizer = get_ds(config)
-
-    # Costruisci il modello
+def get_model(config, vocab_size):
     model = build_transformer(
-        vocab_size=tokenizer.get_vocab_size(),
-        seq_len=config['seq_len'],
+        vocab_size,
+        config["seq_len"],
         d_model=config['d_model'],
         N=config['N'],
         h=config['h'],
         dropout=config['dropout'],
         d_ff=config['d_ff']
-    ).to(device)
+    )
+    return model
+
+
+def train_model(config):
+    # Define the device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
+
+    # Make sure the weights folder exists
+    Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
+
+    train_dataloader, val_dataloader, tokenizer = get_ds(config)
+    model = get_model(config, tokenizer.get_vocab_size()).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9)
 
     initial_epoch = 0
+    # ... Logica di Preload omessa per semplicità ...
 
-    # Gestione del preload (se vuoi continuare un training)
-    # ... (omesso per semplicità, ma puoi aggiungerlo dal codice originale)
-
-    # La loss function ignora il padding token
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'), label_smoothing=0.1).to(device)
 
-    # Ciclo di addestramento
     for epoch in range(initial_epoch, config['num_epochs']):
+        torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
 
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)
-            decoder_input = batch['decoder_input'].to(device)
-            encoder_mask = batch['encoder_mask'].to(device)
-            decoder_mask = batch['decoder_mask'].to(device)
+            encoder_input = batch['encoder_input'].to(device)  # (B, seq_len)
+            decoder_input = batch['decoder_input'].to(device)  # (B, seq_len)
+            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, seq_len)
+            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, seq_len, seq_len)
 
-            # Esegui i tensori attraverso il modello
-            encoder_output = model.encode(encoder_input, encoder_mask)
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-            proj_output = model.project(decoder_output)
+            # Run the tensors through the encoder, decoder and the projection layer
+            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, seq_len, d_model)
+            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
+                                          decoder_mask)  # (B, seq_len, d_model)
+            proj_output = model.project(decoder_output)  # (B, seq_len, vocab_size)
 
-            label = batch['label'].to(device)
+            # Compare the output with the label
+            label = batch['label'].to(device)  # (B, seq_len)
 
-            # Calcola la loss
+            # Compute the loss using a simple cross entropy
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
-            # Backpropagation
+            # Backpropagate the loss
             loss.backward()
+            # Update the weights
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
-        # Salva il modello alla fine di ogni epoca
+        # Run validation at the end of every epoch (logica da implementare)
+        # E.g. run_validation(model, val_dataloader, ...)
+
+        # Save the model at the end of every epoch
         model_filename = f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt"
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
         }, model_filename)
-
-        # TODO: Esegui la validazione (run_validation) alla fine di ogni epoca.
-        # La logica di validazione (greedy_decode, etc.) dal codice originale
-        # può essere adattata qui per misurare le performance sul validation set.
 
 
 if __name__ == '__main__':

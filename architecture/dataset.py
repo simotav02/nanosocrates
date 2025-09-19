@@ -4,6 +4,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
+from tokenizer.tokenizer import NanoSocratesTokenizer
 
 
 def causal_mask(size):
@@ -12,7 +13,7 @@ def causal_mask(size):
 
 
 class NanoSocratesDataset(Dataset):
-    def __init__(self, corpus_path, tokenizer, seq_len):
+    def __init__(self, corpus_path, tokenizer: NanoSocratesTokenizer, seq_len):
         super().__init__()
         self.seq_len = seq_len
         self.tokenizer = tokenizer
@@ -20,9 +21,14 @@ class NanoSocratesDataset(Dataset):
         with open(corpus_path, 'r', encoding='utf-8') as f:
             self.lines = f.readlines()
 
-        self.sot_token = torch.tensor([tokenizer.token_to_id("<SOT>")], dtype=torch.int64)
-        self.eot_token = torch.tensor([tokenizer.token_to_id("<EOT>")], dtype=torch.int64)
-        self.pad_token = torch.tensor([tokenizer.token_to_id("<PAD>")], dtype=torch.int64)
+        # MODIFICA: Accediamo agli ID tramite il dizionario .vocab
+        self.sot_token_id = self.tokenizer.vocab["<SOT>"]
+        self.eot_token_id = self.tokenizer.vocab["<EOT>"]
+        self.pad_token_id = self.tokenizer.vocab["<PAD>"]
+
+        # Creiamo tensori una sola volta per efficienza
+        self.sot_token = torch.tensor([self.sot_token_id], dtype=torch.int64)
+        self.eot_token = torch.tensor([self.eot_token_id], dtype=torch.int64)
 
     def __len__(self):
         return len(self.lines)
@@ -34,8 +40,9 @@ class NanoSocratesDataset(Dataset):
 
         src_text, tgt_text = line.split('\t', 1)
 
-        enc_input_tokens = self.tokenizer.encode(src_text).ids
-        dec_input_tokens = self.tokenizer.encode(tgt_text).ids
+        # MODIFICA: Usiamo il tuo metodo .encode() che restituisce già una lista di ID
+        enc_input_tokens = self.tokenizer.encode(src_text)
+        dec_input_tokens = self.tokenizer.encode(tgt_text)
 
         enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 1
         dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1
@@ -50,19 +57,19 @@ class NanoSocratesDataset(Dataset):
         encoder_input = torch.cat([
             torch.tensor(enc_input_tokens, dtype=torch.int64),
             self.eot_token,
-            torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64),
+            torch.tensor([self.pad_token_id] * enc_num_padding_tokens, dtype=torch.int64),
         ], dim=0)
 
         decoder_input = torch.cat([
             self.sot_token,
             torch.tensor(dec_input_tokens, dtype=torch.int64),
-            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+            torch.tensor([self.pad_token_id] * dec_num_padding_tokens, dtype=torch.int64),
         ], dim=0)
 
         label = torch.cat([
             torch.tensor(dec_input_tokens, dtype=torch.int64),
             self.eot_token,
-            torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64),
+            torch.tensor([self.pad_token_id] * dec_num_padding_tokens, dtype=torch.int64),
         ], dim=0)
 
         assert encoder_input.size(0) == self.seq_len
@@ -70,12 +77,12 @@ class NanoSocratesDataset(Dataset):
         assert label.size(0) == self.seq_len
 
         return {
-            "encoder_input": encoder_input,  # (seq_len)
-            "decoder_input": decoder_input,  # (seq_len)
-            "encoder_mask": (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(),  # (1, 1, seq_len)
-            "decoder_mask": (decoder_input != self.pad_token).unsqueeze(0).int() & causal_mask(decoder_input.size(0)),
-            # (1, seq_len) & (1, seq_len, seq_len)
-            "label": label,  # (seq_len)
+            "encoder_input": encoder_input,
+            "decoder_input": decoder_input,
+            "encoder_mask": (encoder_input != self.pad_token_id).unsqueeze(0).unsqueeze(0).int(),
+            "decoder_mask": (decoder_input != self.pad_token_id).unsqueeze(0).int() & causal_mask(
+                decoder_input.size(0)),
+            "label": label,
             "src_text": src_text,
             "tgt_text": tgt_text,
         }

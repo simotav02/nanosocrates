@@ -12,10 +12,12 @@ import warnings
 from architecture.dataset import NanoSocratesDataset
 from architecture.model import build_transformer
 from architecture.config import get_config
+from tokenizer.tokenizer import NanoSocratesTokenizer
 
 
 def get_ds(config):
-    tokenizer = Tokenizer.from_file(config['tokenizer_file'])
+    # MODIFICA: Carichiamo il tokenizer usando la tua classe custom
+    tokenizer = NanoSocratesTokenizer(config['tokenizer_file'])
 
     dataset = NanoSocratesDataset(config['corpus_file'], tokenizer, config['seq_len'])
 
@@ -43,22 +45,31 @@ def get_model(config, vocab_size):
 
 
 def train_model(config):
-    # Define the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
-
-    # Make sure the weights folder exists
+    # Define the device
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using device: CUDA (NVIDIA GPU)")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using device: MPS (Apple GPU)")
+    else:
+        device = torch.device("cpu")
+        print("Using device: CPU")
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
 
     train_dataloader, val_dataloader, tokenizer = get_ds(config)
-    model = get_model(config, tokenizer.get_vocab_size()).to(device)
+
+    # MODIFICA: Otteniamo la dimensione del vocabolario dalla tua classe
+    vocab_size = len(tokenizer.vocab)
+    model = get_model(config, vocab_size).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9)
-
     initial_epoch = 0
-    # ... Logica di Preload omessa per semplicità ...
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'), label_smoothing=0.1).to(device)
+    # MODIFICA: Otteniamo il pad_token_id dal tuo tokenizer
+    pad_token_id = tokenizer.vocab['<PAD>']
+    loss_fn = nn.CrossEntropyLoss(ignore_index=pad_token_id, label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
@@ -66,34 +77,25 @@ def train_model(config):
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
 
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)  # (B, seq_len)
-            decoder_input = batch['decoder_input'].to(device)  # (B, seq_len)
-            encoder_mask = batch['encoder_mask'].to(device)  # (B, 1, 1, seq_len)
-            decoder_mask = batch['decoder_mask'].to(device)  # (B, 1, seq_len, seq_len)
+            encoder_input = batch['encoder_input'].to(device)
+            decoder_input = batch['decoder_input'].to(device)
+            encoder_mask = batch['encoder_mask'].to(device)
+            decoder_mask = batch['decoder_mask'].to(device)
 
-            # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask)  # (B, seq_len, d_model)
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input,
-                                          decoder_mask)  # (B, seq_len, d_model)
-            proj_output = model.project(decoder_output)  # (B, seq_len, vocab_size)
+            encoder_output = model.encode(encoder_input, encoder_mask)
+            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+            proj_output = model.project(decoder_output)
 
-            # Compare the output with the label
-            label = batch['label'].to(device)  # (B, seq_len)
+            label = batch['label'].to(device)
 
-            # Compute the loss using a simple cross entropy
-            loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
+            # MODIFICA: Usiamo la vocab_size salvata in una variabile
+            loss = loss_fn(proj_output.view(-1, vocab_size), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
-            # Backpropagate the loss
             loss.backward()
-            # Update the weights
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
-        # Run validation at the end of every epoch (logica da implementare)
-        # E.g. run_validation(model, val_dataloader, ...)
-
-        # Save the model at the end of every epoch
         model_filename = f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt"
         torch.save({
             'epoch': epoch,

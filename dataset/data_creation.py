@@ -191,43 +191,31 @@ def get_film_data_final_cleaned(endpoint_url, film_uri):
 def main():
     """
     Funzione principale che orchestra l'intero processo di estrazione e salvataggio.
-
-    Definisce i parametri, invoca le funzioni di recupero dati in sequenza
-    e gestisce il salvataggio finale del dataset su file.
     """
-    # Definizione dei parametri di configurazione.
     DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-    FILM_LIMIT = 1000
-    OUTPUT_FILE = "film_dataset_1000.json"
 
-    # Fase 1: Ottenimento della lista di URI dei film.
+    # <--- MODIFICA CHIAVE: AUMENTIAMO IL NUMERO DI FILM --->
+    # Passiamo da 1000 a 5000 per avere una base dati più solida.
+    # Questo richiederà più tempo per essere eseguito.
+    FILM_LIMIT = 5000
+    OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}.json"
+    # <--- FINE DELLA MODIFICA --->
+
     film_uris = get_film_uris(DBPEDIA_SPARQL_ENDPOINT, FILM_LIMIT)
     if not film_uris:
         print("Nessun film da processare. Uscita.")
         return
 
-    # Fase 2: Iterazione e processamento di ciascun film.
     curated_data = []
     for i, uri in enumerate(film_uris):
         print(f"Processando film {i + 1}/{len(film_uris)}: {uri}")
-
-        # Pausa di cortesia (politeness policy) tra le richieste.
-        # Questa pratica è fondamentale per non sovraccaricare l'endpoint pubblico
-        # e per evitare il blocco dell'IP a causa di un eccessivo numero di richieste
-        # in un breve lasso di tempo (rate limiting).
-        time.sleep(0.5)
-
+        time.sleep(0.5)  # Manteniamo la pausa per cortesia
         data = get_film_data_final_cleaned(DBPEDIA_SPARQL_ENDPOINT, uri)
-
-        # Aggiunge i dati al dataset solo se il processo di curatela ha avuto successo.
         if data:
             curated_data.append(data)
 
-    # Fase 3: Salvataggio dei dati curati in un file JSON.
     try:
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            # ensure_ascii=False per la corretta serializzazione di caratteri non-ASCII (es. accenti).
-            # indent=4 per una formattazione human-readable del file di output.
             json.dump(curated_data, f, ensure_ascii=False, indent=4)
         print(f"\nPROCESSO COMPLETATO.")
         print(f"Dati salvati con successo in '{OUTPUT_FILE}'.")
@@ -236,6 +224,5 @@ def main():
         print(f"Errore durante il salvataggio del file: {e}")
 
 
-# Entry point standard per l'esecuzione dello script.
 if __name__ == "__main__":
     main()

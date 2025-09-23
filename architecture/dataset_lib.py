@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset
-from tokenizer.tokenizer import NanoSocratesTokenizer
+from tokenizers import Tokenizer
 
 
 def causal_mask(size):
@@ -10,7 +9,7 @@ def causal_mask(size):
 
 
 class NanoSocratesDataset(Dataset):
-    def __init__(self, corpus_path, tokenizer: NanoSocratesTokenizer, seq_len):
+    def __init__(self, corpus_path: str, tokenizer: Tokenizer, seq_len: int):
         super().__init__()
         self.seq_len = seq_len
         self.tokenizer = tokenizer
@@ -18,12 +17,16 @@ class NanoSocratesDataset(Dataset):
         with open(corpus_path, 'r', encoding='utf-8') as f:
             self.lines = f.readlines()
 
-        # MODIFICA: Accediamo agli ID tramite il dizionario .vocab
-        self.sot_token_id = self.tokenizer.vocab["<SOT>"]
-        self.eot_token_id = self.tokenizer.vocab["<EOT>"]
-        self.pad_token_id = self.tokenizer.vocab["<PAD>"]
+        # Restituisce None se il token non esiste, quindi possiamo gestirlo se necessario
+        self.sot_token_id = self.tokenizer.token_to_id("<SOT>")
+        self.eot_token_id = self.tokenizer.token_to_id("<EOT>")
+        self.pad_token_id = self.tokenizer.token_to_id("<PAD>")
 
-        # Creiamo tensori una sola volta per efficienza, non serve per il PAD
+        # Controlliamo che i token speciali siano stati trovati
+        if any(id is None for id in [self.sot_token_id, self.eot_token_id, self.pad_token_id]):
+            raise ValueError("Uno o più token speciali (<SOT>, <EOT>, <PAD>) non trovati nel tokenizer.")
+
+        # Creiamo tensori una sola volta per efficienza
         self.sot_token = torch.tensor([self.sot_token_id], dtype=torch.int64)
         self.eot_token = torch.tensor([self.eot_token_id], dtype=torch.int64)
 
@@ -33,29 +36,30 @@ class NanoSocratesDataset(Dataset):
     def __getitem__(self, idx):
         line = self.lines[idx].strip()
         if '\t' not in line:
-            return self.__getitem__((idx + 1) % len(self))
+            import random
+            return self.__getitem__(random.randint(0, len(self) - 1))
 
         src_text, tgt_text = line.split('\t', 1)
 
-        # MODIFICA: Usiamo il tuo metodo .encode() che restituisce già una lista di ID VEDERE SE LO POSSIAMO ADATTARE TIPO HUGGING FACES
-        enc_input_tokens = self.tokenizer.encode(src_text)
-        dec_input_tokens = self.tokenizer.encode(tgt_text)
+        enc_input_tokens = self.tokenizer.encode(src_text).ids
+        dec_input_tokens = self.tokenizer.encode(tgt_text).ids
 
-        enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 2
-        dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1
+        # Il resto della logica per il padding rimane quasi identico
+        enc_num_padding_tokens = self.seq_len - len(enc_input_tokens) - 2  # SOT e EOT
+        dec_num_padding_tokens = self.seq_len - len(dec_input_tokens) - 1  # SOT
 
-        # Make sure the number of padding tokens is not negative. If it is, the sentence is too long
-        if enc_num_padding_tokens < 0 or dec_num_padding_tokens < 0:
-            raise ValueError("Sentence is too long")
+        # Gestiamo il caso di frasi troppo lunghe troncandole
+        if enc_num_padding_tokens < 0:
+            # Tronchiamo l'input dell'encoder
+            enc_input_tokens = enc_input_tokens[:self.seq_len - 2]
+            enc_num_padding_tokens = 0
 
-        # # Stiamo troncando le frasi troppo lunghe perdendo parte dell'informazione
-        # if enc_num_padding_tokens < 0:
-        #     enc_input_tokens = enc_input_tokens[:self.seq_len - 2]
-        #     enc_num_padding_tokens = 0
-        # if dec_num_padding_tokens < 0:
-        #     dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
-        #     dec_num_padding_tokens = 0
+        if dec_num_padding_tokens < 0:
+            # Tronchiamo l'input del decoder e il label corrispondente
+            dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
+            dec_num_padding_tokens = 0
 
+        # Costruiamo i tensori
         encoder_input = torch.cat([
             self.sot_token,
             torch.tensor(enc_input_tokens, dtype=torch.int64),
@@ -71,10 +75,11 @@ class NanoSocratesDataset(Dataset):
 
         label = torch.cat([
             torch.tensor(dec_input_tokens, dtype=torch.int64),
-            self.eot_token,
+            self.eot_token,  # L'obiettivo è predire EOT
             torch.tensor([self.pad_token_id] * dec_num_padding_tokens, dtype=torch.int64),
         ], dim=0)
 
+        # Assicuriamoci che le dimensioni siano corrette
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len

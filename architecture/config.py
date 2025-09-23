@@ -8,8 +8,8 @@ def get_config():
     # Iperparametri basati sugli HINTS della traccia
     return {
         "batch_size": 32,
-        "num_epochs": 10,
-        "lr": 5e-5,
+        "num_epochs": 50,
+        "lr": 3e-5,
         "seq_len": 256,  # HINT: Limit the maximum sequence length (256 or 512)
         "d_model": 256,  # HINT: Use a small hidden dimension (256 or 512)
         "N": 3,  # HINT: A model with 2-4 encoder/decoder layers

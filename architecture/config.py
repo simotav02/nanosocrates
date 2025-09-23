@@ -1,6 +1,5 @@
-# ======================================================================================
-# SEZIONE 2: CONFIGURAZIONE (config.py)
-# ======================================================================================
+# architecture/config.py
+
 from pathlib import Path
 
 
@@ -10,12 +9,23 @@ def get_config():
         "batch_size": 32,
         "num_epochs": 50,
         "lr": 3e-5,
-        "seq_len": 256,  # HINT: Limit the maximum sequence length (256 or 512)
-        "d_model": 256,  # HINT: Use a small hidden dimension (256 or 512)
-        "N": 3,  # HINT: A model with 2-4 encoder/decoder layers
-        "h": 4,  # HINT: A reduced number of attention heads (4 or 8)
-        "d_ff": 1024,  # Feed-forward hidden dimension
+        "seq_len": 256,
+        "d_model": 256,
+        "N": 3,
+        "h": 4,
+        "d_ff": 1024,
         "dropout": 0.1,
+
+        # <--- NUOVO: Parametri per accelerare la validazione --->
+        # Esegui la validazione ogni N epoche. Impostare a 1 per validare dopo ogni epoca.
+        "validate_every_n_epochs": 1,
+
+        # Numero di esempi da usare per la validazione.
+        # Utile per un feedback rapido durante lo sviluppo.
+        # Impostare a -1 per usare l'INTERO set di validazione (per i risultati finali).
+        "num_validation_examples": 50,
+        # <--- FINE DELLE NUOVE AGGIUNTE --->
+
         "model_folder": "weights",
         "model_basename": "nanosocrates_",
         "preload": None,

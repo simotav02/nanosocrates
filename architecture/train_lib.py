@@ -1,17 +1,20 @@
-# train.py (versione finale con validazione e LR scheduler)
+# train.py (versione con validazione multi-task)
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-# <-- NUOVO: Import per lo scheduler -->
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
 from tokenizers import Tokenizer
 from pathlib import Path
 from tqdm import tqdm
 import warnings
 import os
-import torchmetrics
+import re  # <--- NUOVO: Import per le espressioni regolari
+
+# <--- NUOVO: Import per le metriche specifiche --->
+from torchmetrics.text import BLEUScore
+from torchmetrics import Accuracy, Precision, Recall, F1Score
+
 from torch.utils.tensorboard import SummaryWriter
 
 # Importa i tuoi moduli custom
@@ -21,7 +24,7 @@ from architecture.config import get_config
 
 
 # ======================================================================================
-# SEZIONE DI VALIDAZIONE (invariata rispetto a prima)
+# SEZIONE 1: FUNZIONI HELPER PER LA VALUTAZIONE
 # ======================================================================================
 
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
@@ -43,49 +46,111 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
     return decoder_input.squeeze(0)
 
 
-def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples=2):
+# <--- NUOVA FUNZIONE: Parser per le triple RDF --->
+def parse_rdf_triples(text: str) -> set:
+    """Estrae un set di triple (soggetto, predicato, oggetto) da una stringa."""
+    triples = set()
+    # Pattern per trovare <SOT> <SUBJ> ... <PRED> ... <OBJ> ... <EOT>
+    pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
+    matches = pattern.findall(text)
+    for match in matches:
+        # Rimuoviamo spazi extra per una corrispondenza esatta
+        subj = match[0].strip()
+        pred = match[1].strip()
+        obj = match[2].strip()
+        if subj and pred and obj:  # Assicuriamoci che non siano stringhe vuote
+            triples.add((subj, pred, obj))
+    return triples
+
+
+# <--- FUNZIONE DI VALIDAZIONE COMPLETAMENTE RISCRITTA --->
+def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer):
     model.eval()
-    count = 0
-    source_texts, expected, predicted = [], [], []
-    try:
-        with os.popen('stty size', 'r') as console:
-            _, console_width = console.read().split()
-            console_width = int(console_width)
-    except:
-        console_width = 80
+
+    # Liste per accumulare i risultati di ogni task
+    rdf2text_preds, rdf2text_targets = [], []
+    mlm_correct, mlm_total = 0, 0
+
+    # Per Text2RDF e RDF Completion (metrica basata su triple)
+    total_tp, total_fp, total_fn = 0, 0, 0
+
     with torch.no_grad():
-        for batch in validation_ds:
-            count += 1
+        for batch in tqdm(validation_ds, desc="Validating"):
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
-            assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
-            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
+            assert encoder_input.size(0) == 1, "Validation batch size must be 1"
+
+            model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
-            model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
-            source_texts.append(source_text)
-            expected.append(target_text)
-            predicted.append(model_out_text)
-            print('-' * console_width)
-            print(f"{f'SOURCE: ':>12}{source_text}")
-            print(f"{f'TARGET: ':>12}{target_text}")
-            print(f"{f'PREDICTED: ':>12}{model_out_text}")
-            if count == num_examples:
-                print('-' * console_width)
-                break
+            # Decodifichiamo l'output del modello ignorando i token speciali come <PAD>
+            model_out_text = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
+
+            # --- Identificazione del task e calcolo della metrica appropriata ---
+
+            if "<RDF2Text>" in source_text:
+                # Task: RDF-to-Text -> Usiamo metriche basate su testo (BLEU)
+                rdf2text_preds.append(model_out_text)
+                rdf2text_targets.append(target_text)
+
+            elif "<MASK>" in source_text:
+                # Task: RDF Completion 1 (MLM) -> Usiamo Accuracy (corrispondenza esatta)
+                mlm_total += 1
+                if model_out_text.strip() == target_text.strip():
+                    mlm_correct += 1
+
+            elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
+                # Task: Text-to-RDF o RDF Completion 2 -> Usiamo Precision/Recall/F1 basate su triple
+                predicted_triples = parse_rdf_triples(tokenizer.decode(model_out_tokens.detach().cpu().numpy()))
+                true_triples = parse_rdf_triples(target_text)
+
+                tp = len(predicted_triples.intersection(true_triples))
+                fp = len(predicted_triples.difference(true_triples))
+                fn = len(true_triples.difference(predicted_triples))
+
+                total_tp += tp
+                total_fp += fp
+                total_fn += fn
+
+    # --- Calcolo e logging delle metriche aggregate per l'intera epoca di validazione ---
     if writer:
-        metric = torchmetrics.CharErrorRate()
-        writer.add_scalar('validation/cer', metric(predicted, expected), global_step)
-        metric = torchmetrics.WordErrorRate()
-        writer.add_scalar('validation/wer', metric(predicted, expected), global_step)
-        metric = torchmetrics.BLEUScore()
-        writer.add_scalar('validation/bleu', metric(predicted, expected), global_step)
+        print("-" * 80)
+        # Log RDF2Text metrics
+        if rdf2text_preds:
+            bleu_metric = BLEUScore()
+            bleu = bleu_metric(rdf2text_preds,
+                               [[t] for t in rdf2text_targets])  # BLEU si aspetta target in una lista di liste
+            writer.add_scalar('validation/RDF2Text_BLEU', bleu, global_step)
+            print(f"Validation RDF2Text BLEU: {bleu:.4f}")
+
+        # Log MLM metrics
+        if mlm_total > 0:
+            accuracy = mlm_correct / mlm_total
+            writer.add_scalar('validation/MLM_Accuracy', accuracy, global_step)
+            print(f"Validation MLM Accuracy: {accuracy:.4f} ({mlm_correct}/{mlm_total})")
+
+        # Log RDF Generation metrics (Text2RDF & ContinueRDF)
+        if (total_tp + total_fp) > 0 and (total_tp + total_fn) > 0:
+            precision = total_tp / (total_tp + total_fp)
+            recall = total_tp / (total_tp + total_fn)
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+            writer.add_scalar('validation/RDF_Precision', precision, global_step)
+            writer.add_scalar('validation/RDF_Recall', recall, global_step)
+            writer.add_scalar('validation/RDF_F1_Score', f1, global_step)
+            print(f"Validation RDF Generation F1: {f1:.4f} (P: {precision:.4f}, R: {recall:.4f})")
+
+        print("-" * 80)
         writer.flush()
+    model.train()  # Riportiamo il modello in modalità training
 
 
 # ======================================================================================
-# SEZIONI get_ds e get_model (invariate)
+# SEZIONI get_ds, get_model E train_model (INVARIATE, ECCETTO PER LA CHIAMATA ALLA VALIDAZIONE)
 # ======================================================================================
+
 def get_ds(config):
     # ... (il tuo codice qui, è già corretto)
     print(f"Caricamento tokenizer da: {config['tokenizer_file']}")
@@ -105,9 +170,6 @@ def get_model(config, vocab_size):
                              dropout=config['dropout'], d_ff=config['d_ff'])
 
 
-# ======================================================================================
-# SEZIONE DI TRAINING (aggiornata con lo Scheduler)
-# ======================================================================================
 def train_model(config):
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -119,13 +181,8 @@ def train_model(config):
     model = get_model(config, vocab_size).to(device)
 
     writer = SummaryWriter(config['experiment_name'])
-
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9)
 
-    # <-- MODIFICA 1: INIZIALIZZIAMO LO SCHEDULER -->
-    # Lo scheduler ridurrà il learning rate da config['lr'] a 0
-    # lungo l'intero processo di training.
-    # T_max è il numero totale di step di training.
     total_steps = len(train_dataloader) * config['num_epochs']
     scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
 
@@ -156,26 +213,19 @@ def train_model(config):
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             writer.add_scalar('train_loss', loss.item(), global_step)
-            # <-- MODIFICA 2: LOGGHIAMO ANCHE IL LEARNING RATE ATTUALE -->
             current_lr = optimizer.param_groups[0]['lr']
             writer.add_scalar('learning_rate', current_lr, global_step)
             writer.flush()
 
             loss.backward()
-
-            # (Opzionale ma consigliato) Gradient Clipping per ulteriore stabilità
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
             optimizer.step()
-
-            # <-- MODIFICA 3: FACCIAMO AVANZARE LO SCHEDULER -->
-            # Questo aggiorna il learning rate ad ogni batch
             scheduler.step()
-
             optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
 
+        # <--- La chiamata alla funzione di validazione ora usa la nuova logica --->
         run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer)
 
         model_filename = f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt"
@@ -190,5 +240,5 @@ def train_model(config):
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     config = get_config()
-    config['experiment_name'] = "runs/nanosocrates_run_with_scheduler"  # Nuovo nome per non sovrascrivere i log vecchi
+    config['experiment_name'] = "runs/nanosocrates_multitask_run"
     train_model(config)

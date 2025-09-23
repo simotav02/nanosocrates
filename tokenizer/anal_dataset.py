@@ -6,7 +6,7 @@ import os
 # Assicurati che il percorso al file di corpus sia corretto
 # Questo percorso assume che lo script sia nella directory principale del progetto
 # e che il dataset sia in una cartella 'dataset'
-CORPUS_FILE = "../dataset/training_corpus_1000.txt"
+CORPUS_FILE = "../dataset/training_corpus.txt"
 
 # Controlla se il file esiste prima di provare ad aprirlo
 if not os.path.exists(CORPUS_FILE):

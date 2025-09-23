@@ -194,12 +194,8 @@ def main():
     """
     DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
 
-    # <--- MODIFICA CHIAVE: AUMENTIAMO IL NUMERO DI FILM --->
-    # Passiamo da 1000 a 5000 per avere una base dati più solida.
-    # Questo richiederà più tempo per essere eseguito.
     FILM_LIMIT = 5000
     OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}.json"
-    # <--- FINE DELLA MODIFICA --->
 
     film_uris = get_film_uris(DBPEDIA_SPARQL_ENDPOINT, FILM_LIMIT)
     if not film_uris:
@@ -209,7 +205,7 @@ def main():
     curated_data = []
     for i, uri in enumerate(film_uris):
         print(f"Processando film {i + 1}/{len(film_uris)}: {uri}")
-        time.sleep(0.5)  # Manteniamo la pausa per cortesia
+        time.sleep(0.5)
         data = get_film_data_final_cleaned(DBPEDIA_SPARQL_ENDPOINT, uri)
         if data:
             curated_data.append(data)

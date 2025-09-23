@@ -1,13 +1,10 @@
-# datapreprocessing.py (Versione con bilanciamento dei task)
-
 import json
 import random
 from tqdm import tqdm
 
 # --- CONFIGURAZIONE ---
-# Assicurati di usare il nuovo file JSON generato
-INPUT_JSON_FILE = "film_dataset_5000.json"
-OUTPUT_CORPUS_FILE = "training_corpus_5000_balanced.txt"
+INPUT_JSON_FILE = "film_dataset.json"
+OUTPUT_CORPUS_FILE = "training_corpus.txt"
 
 # Token speciali (invariati)
 SOT_TOKEN = "<SOT>"
@@ -76,15 +73,9 @@ def generate_training_data(input_filepath):
             if input_text4 and output_text4:
                 training_examples.append({"input": input_text4, "output": output_text4})
 
-        # <--- MODIFICA CHIAVE PER IL BILANCIAMENTO ---
-        # --- Task 3: RDF Completion 1 (MLM) - CAMPIONAMENTO ---
-        # Invece di generare 2*N esempi (dove N è il numero di triple),
-        # ne generiamo un numero fisso e piccolo per ogni film.
-        # Questo evita che il task MLM domini il dataset.
-
+        # Generiamo un numero fisso e piccolo per ogni film, per evitare che il task MLM domini il dataset.
         # Stabiliamo un numero di esempi MLM da generare per film.
-        # Un valore tra 2 e 4 è un buon punto di partenza.
-        num_mlm_samples_per_film = 3
+        num_mlm_samples_per_film = 1
 
         # Creiamo una lista di tutti i possibili esempi MLM per questo film
         possible_mlm_examples = []
@@ -112,7 +103,6 @@ def generate_training_data(input_filepath):
         # per gestire film con poche triple.
         for i in range(min(num_mlm_samples_per_film, len(possible_mlm_examples))):
             training_examples.append(possible_mlm_examples[i])
-        # <--- FINE DELLA MODIFICA ---
 
     return training_examples
 

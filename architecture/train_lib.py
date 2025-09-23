@@ -12,14 +12,13 @@ import os
 import re
 
 # <--- MODIFICA: Import per le metriche aggiuntive --->
-from torchmetrics.text import BLEUScore, ROUGEScore, METOR
+from torchmetrics.text import BLEUScore, ROUGEScore
 from torch.utils.tensorboard import SummaryWriter
 
 # Importa i tuoi moduli custom
 from architecture.dataset_lib import NanoSocratesDataset, causal_mask
 from architecture.model import build_transformer
 from architecture.config import get_config
-
 
 # ======================================================================================
 # SEZIONE 1: FUNZIONI HELPER (INVARIATE)
@@ -124,13 +123,13 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             print(f"Validation RDF2Text ROUGE-L: {rouge_l_f:.4f}")
 
             # Calcolo e logging di METEOR
-            try:
-                meteor_metric = METEOR()
-                meteor_score = meteor_metric(rdf2text_preds, rdf2text_targets)
-                writer.add_scalar('validation/RDF2Text_METEOR', meteor_score, global_step)
-                print(f"Validation RDF2Text METEOR: {meteor_score:.4f}")
-            except Exception as e:
-                print(f"Could not calculate METEOR score: {e}")
+            # try:
+            #     meteor_metric = METEOR()
+            #     meteor_score = meteor_metric(rdf2text_preds, rdf2text_targets)
+            #     writer.add_scalar('validation/RDF2Text_METEOR', meteor_score, global_step)
+            #     print(f"Validation RDF2Text METEOR: {meteor_score:.4f}")
+            # except Exception as e:
+            #     print(f"Could not calculate METEOR score: {e}")
 
         # Metriche per RDF Completion 1 (MLM) -
         if mlm_total > 0:

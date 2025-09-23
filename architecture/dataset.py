@@ -18,7 +18,7 @@ class NanoSocratesDataset(Dataset):
         with open(corpus_path, 'r', encoding='utf-8') as f:
             self.lines = f.readlines()
 
-        # MODIFICA: Accediamo agli ID tramite il dizionario .vocab
+        # Accediamo agli ID tramite il dizionario .vocab
         self.sot_token_id = self.tokenizer.vocab["<SOT>"]
         self.eot_token_id = self.tokenizer.vocab["<EOT>"]
         self.pad_token_id = self.tokenizer.vocab["<PAD>"]
@@ -37,7 +37,7 @@ class NanoSocratesDataset(Dataset):
 
         src_text, tgt_text = line.split('\t', 1)
 
-        # MODIFICA: Usiamo il tuo metodo .encode() che restituisce già una lista di ID VEDERE SE LO POSSIAMO ADATTARE TIPO HUGGING FACES
+        # Usiamo il tuo metodo .encode() che restituisce già una lista di ID VEDERE SE LO POSSIAMO ADATTARE TIPO HUGGING FACES
         enc_input_tokens = self.tokenizer.encode(src_text)
         dec_input_tokens = self.tokenizer.encode(tgt_text)
 

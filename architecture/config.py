@@ -17,6 +17,6 @@ def get_config():
         "model_folder": "weights",
         "model_basename": "nanosocrates_",
         "preload": None,
-        "tokenizer_file": "../tokenizer/nanosocrates_hf_tokenizer.json",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer.json",
         "corpus_file": "../dataset/training_corpus.txt",
     }

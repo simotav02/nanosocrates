@@ -115,10 +115,21 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
     # Task: RDF-to-Text
     if rdf2text_preds:
-        bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
-        rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
-        meteor_score = meteor_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
-        print("--- RDF2Text Metrics ---")
+        # CONTROLLO DI SICUREZZA: Esegui il calcolo solo se ci sono predizioni non vuote
+        non_empty_preds = [pred for pred in rdf2text_preds if pred.strip()]
+        if not non_empty_preds:
+            print("--- RDF2Text Metrics ---")
+            print("WARNING: Tutte le predizioni per RDF2Text erano vuote. Le metriche sono impostate a 0.")
+            bleu_score = {'bleu': 0.0}
+            rouge_score = {'rougeL': 0.0}
+            meteor_score = {'meteor': 0.0}
+        else:
+            # Se ci sono predizioni valide, calcola le metriche
+            bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
+            rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
+            meteor_score = meteor_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
+            print("--- RDF2Text Metrics ---")
+
         print(f"BLEU:     {bleu_score['bleu']:.4f}")
         print(f"ROUGE-L:  {rouge_score['rougeL']:.4f}")
         print(f"METEOR:   {meteor_score['meteor']:.4f}\n")
@@ -147,7 +158,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         print(f"\n----- Esempio {idx + 1} -----")
         print(f"INPUT      : {example['source']}")
         print(f"RIFERIMENTO: {example['ground_truth']}")
-        print(f"PREDIZIONE : {example['prediction']}")
+        print(f"PREDIZIONE : '{example['prediction']}'")  # Aggiunte virgolette per vedere chiaramente le stringhe vuote
     print("\n" + "=" * 80 + "\n")
 
     # Riporta il modello in modalità training

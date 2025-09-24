@@ -52,67 +52,105 @@ def parse_rdf_triples(text: str) -> set:
 
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
     model.eval()
-    count = num_examples_to_run if num_examples_to_run != -1 else len(validation_ds)
+
+    # Determina il numero di esempi da validare
+    count = len(validation_ds) if num_examples_to_run == -1 else num_examples_to_run
+
+    # Liste e contatori per ogni task
     rdf2text_preds, rdf2text_labels = [], []
     rdf_gen_tp, rdf_gen_fp, rdf_gen_fn = 0, 0, 0
     mlm_correct, mlm_total = 0, 0
+    qualitative_examples = []
+    NUM_QUALITATIVE_EXAMPLES = 5  # Numero di esempi da stampare a console
 
+    # Carica le metriche dalla libreria evaluate
     bleu_metric = evaluate.load("bleu")
     rouge_metric = evaluate.load("rouge")
     meteor_metric = evaluate.load("meteor")
 
     with torch.no_grad():
+        # Itera sul dataset di validazione con una barra di progresso
         batch_iterator = tqdm(validation_ds, desc="Validating", total=count)
         for i, batch in enumerate(batch_iterator):
             if i >= count:
                 break
+
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
-            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
+            # Esegui la decodifica greedy
+            model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
+            # Estrai i testi sorgente, target e predetto
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
-            model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
+            model_out_text_clean = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
+            model_out_text_raw = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
 
+            # Salva i primi esempi per l'analisi qualitativa a console
+            if len(qualitative_examples) < NUM_QUALITATIVE_EXAMPLES:
+                qualitative_examples.append({
+                    "source": source_text,
+                    "prediction": model_out_text_clean,
+                    "ground_truth": target_text
+                })
+
+            # Smista l'esempio nel task corretto in base al token di controllo
             if "<RDF2Text>" in source_text:
-                rdf2text_preds.append(model_out_text)
+                rdf2text_preds.append(model_out_text_clean)
                 rdf2text_labels.append([target_text])
             elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
-                predicted_triples = parse_rdf_triples(model_out_text)
+                predicted_triples = parse_rdf_triples(model_out_text_raw)
                 true_triples = parse_rdf_triples(target_text)
                 rdf_gen_tp += len(predicted_triples.intersection(true_triples))
                 rdf_gen_fp += len(predicted_triples.difference(true_triples))
                 rdf_gen_fn += len(true_triples.difference(predicted_triples))
             elif "<MASK>" in source_text:
-                if model_out_text.strip() == target_text.strip():
-                    mlm_correct += 1
                 mlm_total += 1
+                if model_out_text_clean.strip() == target_text.strip():
+                    mlm_correct += 1
 
+    # --- CALCOLO E STAMPA DELLE METRICHE A CONSOLE ---
+    print("\n" + "=" * 80)
+
+    # Task: RDF-to-Text
     if rdf2text_preds:
         bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
         rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
         meteor_score = meteor_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
-        writer.add_scalar("validation/bleu", bleu_score['bleu'], global_step)
-        writer.add_scalar("validation/rougeL", rouge_score['rougeL'], global_step)
-        writer.add_scalar("validation/meteor", meteor_score['meteor'], global_step)
-        print(
-            f"\n--- RDF2Text Metrics ---\nBLEU: {bleu_score['bleu']:.4f}, ROUGE-L: {rouge_score['rougeL']:.4f}, METEOR: {meteor_score['meteor']:.4f}")
+        print("--- RDF2Text Metrics ---")
+        print(f"BLEU:     {bleu_score['bleu']:.4f}")
+        print(f"ROUGE-L:  {rouge_score['rougeL']:.4f}")
+        print(f"METEOR:   {meteor_score['meteor']:.4f}\n")
 
-    if (rdf_gen_tp + rdf_gen_fp > 0) and (rdf_gen_tp + rdf_gen_fn > 0):
-        precision = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fp)
-        recall = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fn)
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall > 0) else 0
-        writer.add_scalar("validation/rdf_precision", precision, global_step)
-        writer.add_scalar("validation/rdf_recall", recall, global_step)
-        writer.add_scalar("validation/rdf_f1", f1, global_step)
-        print(
-            f"--- Text2RDF / RDF Completion 2 Metrics ---\nPrecision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}")
+    # Task: Text-to-RDF e RDF Completion 2
+    if (rdf_gen_tp + rdf_gen_fp > 0) or (rdf_gen_tp + rdf_gen_fn > 0):
+        precision = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fp) if (rdf_gen_tp + rdf_gen_fp) > 0 else 0
+        recall = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fn) if (rdf_gen_tp + rdf_gen_fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        print("--- Text2RDF / RDF Completion 2 Metrics ---")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall:    {recall:.4f}")
+        print(f"F1-Score:  {f1:.4f}\n")
 
+    # Task: RDF Completion 1 (MLM)
     if mlm_total > 0:
         accuracy = mlm_correct / mlm_total
-        writer.add_scalar("validation/mlm_accuracy", accuracy, global_step)
-        print(f"--- RDF Completion 1 (MLM) Metrics ---\nAccuracy: {accuracy:.4f}\n")
+        print("--- RDF Completion 1 (MLM) Metrics ---")
+        print(f"Accuracy:  {accuracy:.4f}\n")
 
-    writer.flush()
+    print("=" * 80)
+
+    # --- STAMPA ESEMPI QUALITATIVI A CONSOLE ---
+    print("--- Esempi Qualitativi ---")
+    for idx, example in enumerate(qualitative_examples):
+        print(f"\n----- Esempio {idx + 1} -----")
+        print(f"INPUT      : {example['source']}")
+        print(f"RIFERIMENTO: {example['ground_truth']}")
+        print(f"PREDIZIONE : {example['prediction']}")
+    print("\n" + "=" * 80 + "\n")
+
+    # Riporta il modello in modalità training
     model.train()
 
 

@@ -11,6 +11,8 @@ import warnings
 import os
 import re
 
+import evaluate
+
 # <--- MODIFICA: Import per le metriche aggiuntive --->
 from torchmetrics.text import BLEUScore, ROUGEScore
 from torch.utils.tensorboard import SummaryWriter
@@ -59,100 +61,113 @@ def parse_rdf_triples(text: str) -> set:
 # ======================================================================================
 # SEZIONE 2: FUNZIONE DI VALIDAZIONE (AGGIORNATA)
 # ======================================================================================
-
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
+    """
+    Esegue la validazione del modello calcolando le metriche specifiche per ogni task.
+    """
     model.eval()
 
-    rdf2text_preds, rdf2text_targets = [], []
-    mlm_correct, mlm_total = 0, 0
-    total_tp, total_fp, total_fn = 0, 0, 0
+    # Limita il numero di esempi se specificato (per un feedback rapido)
+    count = num_examples_to_run if num_examples_to_run != -1 else len(validation_ds)
 
-    desc = "Validating (Quick Check)" if num_examples_to_run > 0 else "Validating (Full)"
-    num_batches_to_run = len(validation_ds)
-    if num_examples_to_run > 0:
-        num_batches_to_run = min(len(validation_ds), num_examples_to_run)
+    # Inizializzazione delle liste per le metriche
+    rdf2text_preds = []
+    rdf2text_labels = []
+
+    # Contatori per Text2RDF e RDF Completion 2 (Precision/Recall/F1)
+    # Calcoliamo TP, FP, FN a livello di micro-average sulle triple
+    rdf_gen_tp = 0
+    rdf_gen_fp = 0
+    rdf_gen_fn = 0
+
+    # Contatori per RDF Completion 1 (Accuracy)
+    mlm_correct = 0
+    mlm_total = 0
+
+    # Inizializzazione delle metriche dalla libreria 'evaluate'
+    bleu_metric = evaluate.load("bleu")
+    rouge_metric = evaluate.load("rouge")
+    meteor_metric = evaluate.load("meteor")
 
     with torch.no_grad():
-        batch_iterator = tqdm(validation_ds, desc=desc, total=num_batches_to_run)
-        count = 0
-        for batch in batch_iterator:
-            if num_examples_to_run > 0 and count >= num_examples_to_run:
+        # Creiamo un iteratore con TQDM per la barra di progresso
+        batch_iterator = tqdm(validation_ds, desc="Validating", total=count)
+        for i, batch in enumerate(batch_iterator):
+            if i >= count:
                 break
 
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
-            model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
+            # Genera l'output del modello usando la greedy search
+            model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+
+            # Estrai i testi sorgente e target
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
-            model_out_text_clean = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
-            model_out_text_raw = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
+            model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
 
+            # --- Smistamento dei task in base al token speciale nell'input ---
+
+            # Task: RDF-to-Text
             if "<RDF2Text>" in source_text:
-                rdf2text_preds.append(model_out_text_clean)
-                rdf2text_targets.append(target_text)
-            elif "<MASK>" in source_text:
-                mlm_total += 1
-                if model_out_text_clean.strip() == target_text.strip():
-                    mlm_correct += 1
+                rdf2text_preds.append(model_out_text)
+                # Le metriche di 'evaluate' si aspettano le referenze come una lista di liste
+                rdf2text_labels.append([target_text])
+
+            # Task: Text-to-RDF e RDF Completion 2
             elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
-                predicted_triples = parse_rdf_triples(model_out_text_raw)
+                predicted_triples = parse_rdf_triples(model_out_text)
                 true_triples = parse_rdf_triples(target_text)
-                total_tp += len(predicted_triples.intersection(true_triples))
-                total_fp += len(predicted_triples.difference(true_triples))
-                total_fn += len(true_triples.difference(predicted_triples))
-            count += 1
 
-    # <--- INIZIO SEZIONE DI CODICE MODIFICATA --- >
-    # Calcola e logga le metriche aggregate su TensorBoard
-    if writer:
-        print("-" * 80)
-        # Metriche per RDF2Text
-        if rdf2text_preds:
-            # Calcolo BLEU (già presente)
-            bleu_metric = BLEUScore()
-            bleu = bleu_metric(rdf2text_preds, [[t] for t in rdf2text_targets])
-            writer.add_scalar('validation/RDF2Text_BLEU', bleu, global_step)
-            print(f"Validation RDF2Text BLEU: {bleu:.4f}")
+                rdf_gen_tp += len(predicted_triples.intersection(true_triples))
+                rdf_gen_fp += len(predicted_triples.difference(true_triples))
+                rdf_gen_fn += len(true_triples.difference(predicted_triples))
 
-            # <--- NUOVO: Calcolo e logging di ROUGE --->
-            # ROUGEScore calcola diverse metriche. Logghiamo la più comune, rougeL_fmeasure.
-            rouge_metric = ROUGEScore()
-            rouge_scores = rouge_metric(rdf2text_preds, rdf2text_targets)
-            rouge_l_f = rouge_scores['rougeL_fmeasure']
-            writer.add_scalar('validation/RDF2Text_ROUGE-L', rouge_l_f, global_step)
-            print(f"Validation RDF2Text ROUGE-L: {rouge_l_f:.4f}")
+            # Task: RDF Completion 1 (Masked Language Modeling)
+            elif "<MASK>" in source_text:
+                # Confronto diretto della stringa predetta con quella attesa
+                if model_out_text.strip() == target_text.strip():
+                    mlm_correct += 1
+                mlm_total += 1
 
-            # Calcolo e logging di METEOR
-            # try:
-            #     meteor_metric = METEOR()
-            #     meteor_score = meteor_metric(rdf2text_preds, rdf2text_targets)
-            #     writer.add_scalar('validation/RDF2Text_METEOR', meteor_score, global_step)
-            #     print(f"Validation RDF2Text METEOR: {meteor_score:.4f}")
-            # except Exception as e:
-            #     print(f"Could not calculate METEOR score: {e}")
+    # --- Calcolo e Log delle Metriche dopo aver iterato su tutto il validation set ---
 
-        # Metriche per RDF Completion 1 (MLM) -
-        if mlm_total > 0:
-            accuracy = mlm_correct / mlm_total
-            writer.add_scalar('validation/MLM_Accuracy', accuracy, global_step)
-            print(f"Validation MLM Accuracy: {accuracy:.4f} ({mlm_correct}/{mlm_total})")
+    # Log su TensorBoard
+    if rdf2text_preds:
+        bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
+        rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
+        meteor_score = meteor_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
 
-        # Metriche per Text2RDF e RDF Completion 2 -
-        if (total_tp + total_fp) > 0 and (total_tp + total_fn) > 0:
-            precision = total_tp / (total_tp + total_fp)
-            recall = total_tp / (total_tp + total_fn)
-            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        writer.add_scalar("validation/bleu", bleu_score['bleu'], global_step)
+        writer.add_scalar("validation/rougeL", rouge_score['rougeL'], global_step)
+        writer.add_scalar("validation/meteor", meteor_score['meteor'], global_step)
+        print(f"\n--- RDF2Text Metrics ---")
+        print(f"BLEU: {bleu_score['bleu']:.4f}")
+        print(f"ROUGE-L: {rouge_score['rougeL']:.4f}")
+        print(f"METEOR: {meteor_score['meteor']:.4f}")
 
-            writer.add_scalar('validation/RDF_Precision', precision, global_step)
-            writer.add_scalar('validation/RDF_Recall', recall, global_step)
-            writer.add_scalar('validation/RDF_F1_Score', f1, global_step)
-            print(f"Validation RDF Generation F1: {f1:.4f} (P: {precision:.4f}, R: {recall:.4f})")
+    if (rdf_gen_tp + rdf_gen_fp > 0) and (rdf_gen_tp + rdf_gen_fn > 0):
+        precision = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fp)
+        recall = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fn)
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall > 0) else 0
 
-        print("-" * 80)
-        writer.flush()
+        writer.add_scalar("validation/rdf_precision", precision, global_step)
+        writer.add_scalar("validation/rdf_recall", recall, global_step)
+        writer.add_scalar("validation/rdf_f1", f1, global_step)
+        print(f"\n--- Text2RDF / RDF Completion 2 Metrics ---")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        print(f"F1-Score: {f1:.4f}")
 
+    if mlm_total > 0:
+        accuracy = mlm_correct / mlm_total
+        writer.add_scalar("validation/mlm_accuracy", accuracy, global_step)
+        print(f"\n--- RDF Completion 1 (MLM) Metrics ---")
+        print(f"Accuracy: {accuracy:.4f}\n")
+
+    writer.flush()
     model.train()
-
 
 # ======================================================================================
 # SEZIONE 3: FUNZIONI DI SETUP (INVARIATE)

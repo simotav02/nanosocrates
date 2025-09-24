@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, random_split
 from pathlib import Path
 from tqdm import tqdm
 import warnings
-from architecture.dataset import NanoSocratesDataset
+from vecchio.architetture.dataset import NanoSocratesDataset
 from architecture.model import build_transformer
 from architecture.config import get_config
 from vecchio.tokenizer.tokenizer import NanoSocratesTokenizer

@@ -11,7 +11,7 @@ def get_config():
         "num_epochs": 10,
         "lr": 1e-5,
         "seq_len": 256,
-        "d_model": 256,
+        "d_model": 256, dio cane
         "N": 2,  # Numero di blocchi Encoder/Decoder
         "h": 4,  # Numero di teste di attenzione
         "d_ff": 1024,  # Dimensione del layer FeedForward

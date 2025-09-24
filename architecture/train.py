@@ -3,16 +3,14 @@
 # ======================================================================================
 import torch
 import torch.nn as nn
-import math
-from torch.utils.data import Dataset, DataLoader, random_split
-from tokenizers import Tokenizer
+from torch.utils.data import DataLoader, random_split
 from pathlib import Path
 from tqdm import tqdm
 import warnings
 from architecture.dataset import NanoSocratesDataset
 from architecture.model import build_transformer
 from architecture.config import get_config
-from tokenizer.tokenizer import NanoSocratesTokenizer
+from vecchio.tokenizer.tokenizer import NanoSocratesTokenizer
 
 
 def get_ds(config):

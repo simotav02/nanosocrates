@@ -6,7 +6,7 @@ from tqdm import tqdm
 INPUT_JSON_FILE = "film_dataset.json"
 OUTPUT_CORPUS_FILE = "training_corpus.txt"
 
-# Token speciali (invariati)
+# Token speciali
 SOT_TOKEN = "<SOT>"
 EOT_TOKEN = "<EOT>"
 SUBJ_TOKEN = "<SUBJ>"

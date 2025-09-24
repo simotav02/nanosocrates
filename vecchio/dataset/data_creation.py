@@ -6,9 +6,6 @@ Questo script orchestra un processo di acquisizione dati in tre fasi:
     predefinito di triple (dati strutturati) e l'abstract testuale in lingua inglese.
 3.  Applica una logica di pulizia e formattazione, che include la compressione degli URI
     in notazione prefissata (QName) e il salvataggio dei dati curati in un file JSON.
-
-L'obiettivo è la creazione di un dataset strutturato, pulito e leggibile, pronto
-per essere utilizzato in applicazioni di analisi dati o di Natural Language Processing.
 """
 
 import json

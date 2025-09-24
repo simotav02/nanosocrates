@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset
-from tokenizer.tokenizer import NanoSocratesTokenizer
+from vecchio.tokenizer.tokenizer import NanoSocratesTokenizer
 
 
 def causal_mask(size):

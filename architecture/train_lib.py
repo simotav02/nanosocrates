@@ -117,24 +117,49 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
 
 def get_ds(config):
-    print(f"Caricamento tokenizer da: {config['tokenizer_file']}")
-    tokenizer = Tokenizer.from_file(config['tokenizer_file'])
+    tokenizer_path = Path(config['tokenizer_file'])
+    if not tokenizer_path.exists():
+        raise FileNotFoundError(f"Tokenizer non trovato in '{tokenizer_path}'. Esegui prima tokenizer_lib.py.")
 
-    full_dataset = NanoSocratesDataset(
-        data_dir=config['data_dir'],
-        tokenizer=tokenizer,
-        seq_len=config['seq_len'],
-        split='train'
-    )
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
 
-    train_ds_size = int(0.9 * len(full_dataset))
-    val_ds_size = len(full_dataset) - train_ds_size
-    train_ds, val_ds = random_split(full_dataset, [train_ds_size, val_ds_size])
+    # Carica i dati grezzi dai file
+    source_path = os.path.join(config['data_dir'], "train.source")
+    target_path = os.path.join(config['data_dir'], "train.target")
 
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=4,
-                                  pin_memory=True)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False)
+    with open(source_path, 'r', encoding='utf-8') as f:
+        source_lines = f.readlines()
+    with open(target_path, 'r', encoding='utf-8') as f:
+        target_lines = f.readlines()
 
+    # Crea una lista di coppie
+    raw_ds = [{'source': src.strip(), 'target': tgt.strip()} for src, tgt in zip(source_lines, target_lines)]
+
+    # Dividi i dati: 90% training, 10% validazione
+    train_ds_size = int(0.9 * len(raw_ds))
+    val_ds_size = len(raw_ds) - train_ds_size
+    train_ds_raw, val_ds_raw = random_split(raw_ds, [train_ds_size, val_ds_size])
+
+    # Crea le istanze di NanoSocratesDataset usando i sottoinsiemi di dati
+    train_ds = NanoSocratesDataset(train_ds_raw, tokenizer, config['seq_len'])
+    val_ds = NanoSocratesDataset(val_ds_raw, tokenizer, config['seq_len'])
+
+    # Stampa le lunghezze massime per un controllo (opzionale ma utile)
+    max_len_src = 0
+    max_len_tgt = 0
+    for item in raw_ds:
+        src_ids = tokenizer.encode(item['source']).ids
+        tgt_ids = tokenizer.encode(item['target']).ids
+        max_len_src = max(max_len_src, len(src_ids))
+        max_len_tgt = max(max_len_tgt, len(tgt_ids))
+
+    print(f'Max length of source sentence: {max_len_src}')
+    print(f'Max length of target sentence: {max_len_tgt}')
+
+    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
+    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False)  # Batch size 1 per validazione
+
+    # NOTA: Usiamo un solo tokenizer per source e target
     return train_dataloader, val_dataloader, tokenizer
 
 
@@ -153,6 +178,7 @@ def get_model(config, vocab_size):
 
 def train_model(config):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Fallback per Mac M1/M2/M3
     if not torch.cuda.is_available() and torch.backends.mps.is_available():
         device = "mps"
     print(f"Using device: {device}")

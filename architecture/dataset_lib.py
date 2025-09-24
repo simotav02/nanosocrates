@@ -1,7 +1,8 @@
+# dataset.py (MODIFICATO)
+
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from tokenizers import Tokenizer
-import os
 
 
 def causal_mask(size):
@@ -10,73 +11,58 @@ def causal_mask(size):
 
 
 class NanoSocratesDataset(Dataset):
-
-    def __init__(self, data_dir: str, tokenizer: Tokenizer, seq_len: int, split: str = "train"):
+    def __init__(self, raw_ds, tokenizer: Tokenizer, seq_len: int):
         super().__init__()
         self.seq_len = seq_len
         self.tokenizer = tokenizer
-        self.data_dir = data_dir
-        self.split = split
-
-        source_path = os.path.join(data_dir, f"{split}.source")
-        target_path = os.path.join(data_dir, f"{split}.target")
-
-        # Carichiamo le righe da entrambi i file
-        print(f"Caricamento del dataset '{split}'...")
-        with open(source_path, 'r', encoding='utf-8') as f:
-            self.source_lines = f.readlines()
-        with open(target_path, 'r', encoding='utf-8') as f:
-            self.target_lines = f.readlines()
-
-        # Controllo di coerenza: i file devono avere lo stesso numero di righe
-        assert len(self.source_lines) == len(self.target_lines), \
-            "I file source e target non hanno lo stesso numero di righe!"
+        self.raw_ds = raw_ds
 
         # Otteniamo gli ID dei token speciali una sola volta
         self.pad_token_id = self.tokenizer.token_to_id("<PAD>")
-        self.sot_token_id = self.tokenizer.token_to_id("<SOT>")  # Start of Text
-        self.eot_token_id = self.tokenizer.token_to_id("<EOT>")  # End of Text
+        self.sot_token_id = self.tokenizer.token_to_id("<SOT>")
+        self.eot_token_id = self.tokenizer.token_to_id("<EOT>")
 
         if self.pad_token_id is None or self.sot_token_id is None or self.eot_token_id is None:
             raise ValueError("Token <PAD>, <SOT> o <EOT> non trovati nel vocabolario del tokenizer.")
 
     def __len__(self):
-        return len(self.source_lines)
+        return len(self.raw_ds)
 
     def __getitem__(self, idx):
-        src_text = self.source_lines[idx].strip()
-        tgt_text = self.target_lines[idx].strip()
+        # Prendiamo la coppia sorgente-target dal dataset grezzo
+        src_tgt_pair = self.raw_ds[idx]
+        src_text = src_tgt_pair['source']
+        tgt_text = src_tgt_pair['target']
 
         # Tokenizziamo le sequenze di input e di target
         enc_input_tokens = self.tokenizer.encode(src_text).ids
         dec_input_tokens = self.tokenizer.encode(tgt_text).ids
 
-        # Calcoliamo quanti token di padding sono necessari
-        # Per l'encoder: [SOT] + source + [EOT]
-        enc_padding_needed = self.seq_len - len(enc_input_tokens) - 2
-        # Per il decoder: [SOT] + target
-        dec_padding_needed = self.seq_len - len(dec_input_tokens) - 1
-
         # Gestiamo sequenze troppo lunghe (troncamento)
-        if enc_padding_needed < 0:
+        # Per l'encoder: [SOT] + source + [EOT] -> max_len = seq_len - 2
+        if len(enc_input_tokens) > self.seq_len - 2:
             enc_input_tokens = enc_input_tokens[:self.seq_len - 2]
-            enc_padding_needed = 0
 
-        if dec_padding_needed < 0:
+        # Per il decoder: [SOT] + target -> max_len = seq_len - 1
+        # Per la label: target + [EOT] -> max_len = seq_len - 1
+        if len(dec_input_tokens) > self.seq_len - 1:
             dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
-            dec_padding_needed = 0
+
+        # Calcoliamo il padding necessario DOPO il troncamento
+        enc_padding_needed = self.seq_len - len(enc_input_tokens) - 2
+        dec_padding_needed = self.seq_len - len(dec_input_tokens) - 1
 
         # Input per l'Encoder: [SOT] + source_tokens + [EOT] + [PAD]...
         encoder_input = torch.cat([
-            torch.tensor([self.sot_token_id]),
+            torch.tensor([self.sot_token_id], dtype=torch.int64),
             torch.tensor(enc_input_tokens, dtype=torch.int64),
-            torch.tensor([self.eot_token_id]),
+            torch.tensor([self.eot_token_id], dtype=torch.int64),
             torch.tensor([self.pad_token_id] * enc_padding_needed, dtype=torch.int64)
         ])
 
         # Input per il Decoder (teacher forcing): [SOT] + target_tokens + [PAD]...
         decoder_input = torch.cat([
-            torch.tensor([self.sot_token_id]),
+            torch.tensor([self.sot_token_id], dtype=torch.int64),
             torch.tensor(dec_input_tokens, dtype=torch.int64),
             torch.tensor([self.pad_token_id] * dec_padding_needed, dtype=torch.int64)
         ])
@@ -84,7 +70,7 @@ class NanoSocratesDataset(Dataset):
         # Label (ciò che il decoder deve predire): target_tokens + [EOT] + [PAD]...
         label = torch.cat([
             torch.tensor(dec_input_tokens, dtype=torch.int64),
-            torch.tensor([self.eot_token_id]),
+            torch.tensor([self.eot_token_id], dtype=torch.int64),
             torch.tensor([self.pad_token_id] * dec_padding_needed, dtype=torch.int64)
         ])
 
@@ -94,12 +80,12 @@ class NanoSocratesDataset(Dataset):
         assert label.size(0) == self.seq_len
 
         return {
-            "encoder_input": encoder_input,  # (seq_len)
-            "decoder_input": decoder_input,  # (seq_len)
-            "encoder_mask": (encoder_input != self.pad_token_id).unsqueeze(0).unsqueeze(0).int(),  # (1, 1, seq_len)
+            "encoder_input": encoder_input,
+            "decoder_input": decoder_input,
+            "encoder_mask": (encoder_input != self.pad_token_id).unsqueeze(0).unsqueeze(0).int(),
             "decoder_mask": (decoder_input != self.pad_token_id).unsqueeze(0).int() & causal_mask(
-                decoder_input.size(0)),  # (1, seq_len) & (1, seq_len, seq_len)
-            "label": label,  # (seq_len)
+                decoder_input.size(0)),
+            "label": label,
             "src_text": src_text,
             "tgt_text": tgt_text,
         }

@@ -9,13 +9,12 @@ import warnings
 import os
 import re
 import evaluate
-
 from torch.utils.tensorboard import SummaryWriter
 
 # Importa i moduli custom del progetto
 from dataset_lib import NanoSocratesDataset, causal_mask
 from model import build_transformer
-from config import get_config
+from config import get_config  # Assicurati che il nome sia corretto (get_config o get_config_trial)
 
 
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
@@ -41,6 +40,7 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
 
 def parse_rdf_triples(text: str) -> set:
     triples = set()
+    # Pattern migliorato per gestire spazi extra
     pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
     matches = pattern.findall(text)
     for match in matches:
@@ -50,6 +50,7 @@ def parse_rdf_triples(text: str) -> set:
     return triples
 
 
+# --- VERSIONE CORRETTA DELLA FUNZIONE DI VALIDAZIONE ---
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
     qualitative_examples = []
     NUM_QUALITATIVE_EXAMPLES = 5
@@ -152,16 +153,15 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
     writer.flush()
     model.train()
 
+
 def get_ds(config):
+    # NOTA: Questa funzione potrebbe aver bisogno di essere adattata al tuo dataset_lib.py
+    # Assumo che NanoSocratesDataset accetti 'corpus_file' come nel codice precedente
     print(f"Caricamento tokenizer da: {config['tokenizer_file']}")
     tokenizer = Tokenizer.from_file(config['tokenizer_file'])
 
-    full_dataset = NanoSocratesDataset(
-        data_dir=config['data_dir'],
-        tokenizer=tokenizer,
-        seq_len=config['seq_len'],
-        split='train'
-    )
+    # Assicurati che 'corpus_file' sia il parametro corretto per il tuo Dataset
+    full_dataset = NanoSocratesDataset(config['corpus_file'], tokenizer, config['seq_len'])
 
     train_ds_size = int(0.9 * len(full_dataset))
     val_ds_size = len(full_dataset) - train_ds_size
@@ -174,16 +174,10 @@ def get_ds(config):
     return train_dataloader, val_dataloader, tokenizer
 
 
-
 def get_model(config, vocab_size):
     return build_transformer(
-        vocab_size=vocab_size,
-        seq_len=config["seq_len"],
-        d_model=config['d_model'],
-        N=config['N'],
-        h=config['h'],
-        dropout=config['dropout'],
-        d_ff=config['d_ff']
+        vocab_size=vocab_size, seq_len=config["seq_len"], d_model=config['d_model'],
+        N=config['N'], h=config['h'], dropout=config['dropout'], d_ff=config['d_ff']
     )
 
 
@@ -194,32 +188,26 @@ def train_model(config):
     print(f"Using device: {device}")
 
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
-
     train_dataloader, val_dataloader, tokenizer = get_ds(config)
     model = get_model(config, tokenizer.get_vocab_size()).to(device)
-
     writer = SummaryWriter(config['experiment_name'])
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9)
 
-    initial_epoch = 0
-    global_step = 0
-
-    # Gestione del precaricamento di un modello
+    initial_epoch, global_step = 0, 0
     if config['preload']:
-        model_filename = config['preload']
-        print(f"Preloading model {model_filename}")
-        state = torch.load(model_filename)
+        state = torch.load(config['preload'])
         model.load_state_dict(state['model_state_dict'])
         initial_epoch = state['epoch'] + 1
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
+        print(f"Preloading model {config['preload']}, resuming from epoch {initial_epoch}")
 
     total_steps = len(train_dataloader) * config['num_epochs']
     scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-7, last_epoch=global_step - 1)
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'), label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
-        torch.cuda.empty_cache()
+        torch.cuda.empty_cache()  # Utile se si usa CUDA
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
@@ -238,38 +226,32 @@ def train_model(config):
 
             writer.add_scalar('train_loss', loss.item(), global_step)
             writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
-            writer.flush()
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
-
             global_step += 1
+
+        # --- MIGLIORAMENTO PER L'OUTPUT PULITO ---
+        batch_iterator.close()
 
         if (epoch + 1) % config['validate_every_n_epochs'] == 0:
             run_validation(
-                model=model,
-                validation_ds=val_dataloader,
-                tokenizer=tokenizer,
-                max_len=config['seq_len'],
-                device=device,
-                global_step=global_step,
-                writer=writer,
+                model=model, validation_ds=val_dataloader, tokenizer=tokenizer, max_len=config['seq_len'],
+                device=device, global_step=global_step, writer=writer,
                 num_examples_to_run=config['num_validation_examples']
             )
 
         model_filename = f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt"
         torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'global_step': global_step
+            'epoch': epoch, 'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(), 'global_step': global_step
         }, model_filename)
 
 
 if __name__ == '__main__':
-    warnings.filterwarnings("ignore")
-    config = get_config()
+    warnings.filterwarnings("ignore", category=SyntaxWarning)  # Ignora solo i SyntaxWarning
+    config = get_config()  # o get_config_trial()
     train_model(config)

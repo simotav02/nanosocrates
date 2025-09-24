@@ -1,5 +1,3 @@
-# train.py (Versione completa con TUTTE le metriche richieste dalla traccia)
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
@@ -10,21 +8,15 @@ from tqdm import tqdm
 import warnings
 import os
 import re
-
 import evaluate
 
-# <--- MODIFICA: Import per le metriche aggiuntive --->
-from torchmetrics.text import BLEUScore, ROUGEScore
 from torch.utils.tensorboard import SummaryWriter
 
-# Importa i tuoi moduli custom
-from architecture.dataset_lib import NanoSocratesDataset, causal_mask
-from architecture.model import build_transformer
-from architecture.config import get_config
+# Importa i moduli custom del progetto
+from dataset_lib import NanoSocratesDataset, causal_mask
+from model import build_transformer
+from config import get_config
 
-# ======================================================================================
-# SEZIONE 1: FUNZIONI HELPER (INVARIATE)
-# ======================================================================================
 
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
     sot_idx = tokenizer.token_to_id('<SOT>')
@@ -58,137 +50,99 @@ def parse_rdf_triples(text: str) -> set:
     return triples
 
 
-# ======================================================================================
-# SEZIONE 2: FUNZIONE DI VALIDAZIONE (AGGIORNATA)
-# ======================================================================================
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
-    """
-    Esegue la validazione del modello calcolando le metriche specifiche per ogni task.
-    """
     model.eval()
-
-    # Limita il numero di esempi se specificato (per un feedback rapido)
     count = num_examples_to_run if num_examples_to_run != -1 else len(validation_ds)
+    rdf2text_preds, rdf2text_labels = [], []
+    rdf_gen_tp, rdf_gen_fp, rdf_gen_fn = 0, 0, 0
+    mlm_correct, mlm_total = 0, 0
 
-    # Inizializzazione delle liste per le metriche
-    rdf2text_preds = []
-    rdf2text_labels = []
-
-    # Contatori per Text2RDF e RDF Completion 2 (Precision/Recall/F1)
-    # Calcoliamo TP, FP, FN a livello di micro-average sulle triple
-    rdf_gen_tp = 0
-    rdf_gen_fp = 0
-    rdf_gen_fn = 0
-
-    # Contatori per RDF Completion 1 (Accuracy)
-    mlm_correct = 0
-    mlm_total = 0
-
-    # Inizializzazione delle metriche dalla libreria 'evaluate'
     bleu_metric = evaluate.load("bleu")
     rouge_metric = evaluate.load("rouge")
     meteor_metric = evaluate.load("meteor")
 
     with torch.no_grad():
-        # Creiamo un iteratore con TQDM per la barra di progresso
         batch_iterator = tqdm(validation_ds, desc="Validating", total=count)
         for i, batch in enumerate(batch_iterator):
             if i >= count:
                 break
-
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
-
-            # Genera l'output del modello usando la greedy search
             model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
-
-            # Estrai i testi sorgente e target
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
             model_out_text = tokenizer.decode(model_out.detach().cpu().numpy())
 
-            # --- Smistamento dei task in base al token speciale nell'input ---
-
-            # Task: RDF-to-Text
             if "<RDF2Text>" in source_text:
                 rdf2text_preds.append(model_out_text)
-                # Le metriche di 'evaluate' si aspettano le referenze come una lista di liste
                 rdf2text_labels.append([target_text])
-
-            # Task: Text-to-RDF e RDF Completion 2
             elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
                 predicted_triples = parse_rdf_triples(model_out_text)
                 true_triples = parse_rdf_triples(target_text)
-
                 rdf_gen_tp += len(predicted_triples.intersection(true_triples))
                 rdf_gen_fp += len(predicted_triples.difference(true_triples))
                 rdf_gen_fn += len(true_triples.difference(predicted_triples))
-
-            # Task: RDF Completion 1 (Masked Language Modeling)
             elif "<MASK>" in source_text:
-                # Confronto diretto della stringa predetta con quella attesa
                 if model_out_text.strip() == target_text.strip():
                     mlm_correct += 1
                 mlm_total += 1
 
-    # --- Calcolo e Log delle Metriche dopo aver iterato su tutto il validation set ---
-
-    # Log su TensorBoard
     if rdf2text_preds:
         bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
         rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
         meteor_score = meteor_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
-
         writer.add_scalar("validation/bleu", bleu_score['bleu'], global_step)
         writer.add_scalar("validation/rougeL", rouge_score['rougeL'], global_step)
         writer.add_scalar("validation/meteor", meteor_score['meteor'], global_step)
-        print(f"\n--- RDF2Text Metrics ---")
-        print(f"BLEU: {bleu_score['bleu']:.4f}")
-        print(f"ROUGE-L: {rouge_score['rougeL']:.4f}")
-        print(f"METEOR: {meteor_score['meteor']:.4f}")
+        print(
+            f"\n--- RDF2Text Metrics ---\nBLEU: {bleu_score['bleu']:.4f}, ROUGE-L: {rouge_score['rougeL']:.4f}, METEOR: {meteor_score['meteor']:.4f}")
 
     if (rdf_gen_tp + rdf_gen_fp > 0) and (rdf_gen_tp + rdf_gen_fn > 0):
         precision = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fp)
         recall = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fn)
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall > 0) else 0
-
         writer.add_scalar("validation/rdf_precision", precision, global_step)
         writer.add_scalar("validation/rdf_recall", recall, global_step)
         writer.add_scalar("validation/rdf_f1", f1, global_step)
-        print(f"\n--- Text2RDF / RDF Completion 2 Metrics ---")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
-        print(f"F1-Score: {f1:.4f}")
+        print(
+            f"--- Text2RDF / RDF Completion 2 Metrics ---\nPrecision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}")
 
     if mlm_total > 0:
         accuracy = mlm_correct / mlm_total
         writer.add_scalar("validation/mlm_accuracy", accuracy, global_step)
-        print(f"\n--- RDF Completion 1 (MLM) Metrics ---")
-        print(f"Accuracy: {accuracy:.4f}\n")
+        print(f"--- RDF Completion 1 (MLM) Metrics ---\nAccuracy: {accuracy:.4f}\n")
 
     writer.flush()
     model.train()
 
-# ======================================================================================
-# SEZIONE 3: FUNZIONI DI SETUP (INVARIATE)
-# ======================================================================================
 
 def get_ds(config):
     print(f"Caricamento tokenizer da: {config['tokenizer_file']}")
     tokenizer = Tokenizer.from_file(config['tokenizer_file'])
-    dataset = NanoSocratesDataset(config['corpus_file'], tokenizer, config['seq_len'])
-    train_ds_size = int(0.9 * len(dataset))
-    val_ds_size = len(dataset) - train_ds_size
-    train_ds, val_ds = random_split(dataset, [train_ds_size, val_ds_size])
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)
+
+    full_dataset = NanoSocratesDataset(
+        data_dir=config['data_dir'],
+        tokenizer=tokenizer,
+        seq_len=config['seq_len'],
+        split='train'
+    )
+
+    train_ds_size = int(0.9 * len(full_dataset))
+    val_ds_size = len(full_dataset) - train_ds_size
+    train_ds, val_ds = random_split(full_dataset, [train_ds_size, val_ds_size])
+
+    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=4,
+                                  pin_memory=True)
+    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False)
+
     return train_dataloader, val_dataloader, tokenizer
+
 
 
 def get_model(config, vocab_size):
     return build_transformer(
-        vocab_size,
-        config["seq_len"],
+        vocab_size=vocab_size,
+        seq_len=config["seq_len"],
         d_model=config['d_model'],
         N=config['N'],
         h=config['h'],
@@ -197,24 +151,39 @@ def get_model(config, vocab_size):
     )
 
 
-# ======================================================================================
-# SEZIONE 4: LOOP DI TRAINING PRINCIPALE (INVARIATO)
-# ======================================================================================
-
 def train_model(config):
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not torch.cuda.is_available() and torch.backends.mps.is_available():
+        device = "mps"
     print(f"Using device: {device}")
+
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
+
     train_dataloader, val_dataloader, tokenizer = get_ds(config)
     model = get_model(config, tokenizer.get_vocab_size()).to(device)
+
     writer = SummaryWriter(config['experiment_name'])
     optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9)
+
+    initial_epoch = 0
+    global_step = 0
+
+    # Gestione del precaricamento di un modello
+    if config['preload']:
+        model_filename = config['preload']
+        print(f"Preloading model {model_filename}")
+        state = torch.load(model_filename)
+        model.load_state_dict(state['model_state_dict'])
+        initial_epoch = state['epoch'] + 1
+        optimizer.load_state_dict(state['optimizer_state_dict'])
+        global_step = state['global_step']
+
     total_steps = len(train_dataloader) * config['num_epochs']
-    scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
+    scheduler = CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-7, last_epoch=global_step - 1)
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'), label_smoothing=0.1).to(device)
 
-    global_step = 0
-    for epoch in range(config['num_epochs']):
+    for epoch in range(initial_epoch, config['num_epochs']):
+        torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
@@ -222,20 +191,25 @@ def train_model(config):
             decoder_input = batch['decoder_input'].to(device)
             encoder_mask = batch['encoder_mask'].to(device)
             decoder_mask = batch['decoder_mask'].to(device)
+
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
             proj_output = model.project(decoder_output)
+
             label = batch['label'].to(device)
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
-            batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
+            batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}", "lr": f"{optimizer.param_groups[0]['lr']:.2e}"})
+
             writer.add_scalar('train_loss', loss.item(), global_step)
             writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
             writer.flush()
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
+
             global_step += 1
 
         if (epoch + 1) % config['validate_every_n_epochs'] == 0:
@@ -259,12 +233,7 @@ def train_model(config):
         }, model_filename)
 
 
-# ======================================================================================
-# SEZIONE 5: ESECUZIONE (INVARIATA)
-# ======================================================================================
-
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     config = get_config()
-    config['experiment_name'] = "runs/nanosocrates_full_metrics"
     train_model(config)

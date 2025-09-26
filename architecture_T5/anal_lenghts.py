@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 # Assicurati che questi percorsi siano corretti rispetto alla posizione dello script.
 # Stiamo analizzando i dati del "quick test".
 TOKENIZER_PATH = "../tokenizer/film_corpus_bpe_tokenizer.json"
-DATA_DIR = "training_data_quick_test"  # La cartella con i dati per il test rapido
+DATA_DIR = "../dataset/training_data"  # La cartella con i dati per il test rapido
 
 # Il valore di seq_len che vogliamo testare
 SEQ_LEN_TO_TEST = 512

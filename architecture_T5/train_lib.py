@@ -13,9 +13,8 @@ import evaluate
 
 from torch.utils.tensorboard import SummaryWriter
 
-from model import build_transformer
+from model_lib import build_transformer
 from config import get_config
-# NOTA: Assicurati che il tuo dataset_lib sia importato correttamente
 from dataset_lib import NanoSocratesDataset
 
 

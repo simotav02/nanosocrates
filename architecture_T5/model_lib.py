@@ -88,9 +88,9 @@ class T5Attention(nn.Module):
         self.heads = heads
         self.causal = causal
 
-        self.multi_head_attn = nn.MultiHeadAttention(d_model, heads, dropout=dropout, batch_first=True)
+        self.multi_head_attn = nn.MultiheadAttention(d_model, heads, dropout=dropout, batch_first=True)
         self.relative_position_bias = T5RelativePositionBias(
-            scale=d_model ** -0.5, causal=causal, heads=heads
+            scale=(d_model // heads) ** -0.5, causal=causal, heads=heads
         )
 
     def forward(self, x, context=None, mask=None, context_mask=None):

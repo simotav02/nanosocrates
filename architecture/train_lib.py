@@ -70,17 +70,15 @@ def parse_rdf_triples(text: str) -> set:
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
     model.eval()
     count = -1 if num_examples_to_run == -1 else num_examples_to_run
-    source_texts = []
-    expected = []
-    predicted = []
 
-    # Metriche
+    # Liste per le metriche
     rdf2text_preds, rdf2text_labels = [], []
     rdf_gen_tp, rdf_gen_fp, rdf_gen_fn = 0, 0, 0
     mlm_correct, mlm_total = 0, 0
     qualitative_examples = []
     NUM_QUALITATIVE_EXAMPLES = 5
 
+    # Caricamento metriche
     bleu_metric = evaluate.load("bleu")
     rouge_metric = evaluate.load("rouge")
     meteor_metric = evaluate.load("meteor")
@@ -92,32 +90,55 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             encoder_input = batch["encoder_input"].to(device)
             encoder_mask = batch["encoder_mask"].to(device)
 
+            # Esegui la decodifica greedy per ottenere i token predetti
             model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
 
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
-            model_out_text = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
+
+            # --- MODIFICA 1: Manteniamo entrambe le versioni della decodifica ---
+            # Versione per valutazione di testo (es. BLEU, ROUGE)
+            model_out_text_clean = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
+            # Versione per valutazione di RDF (che richiede i token speciali) e per il debug
             model_out_text_raw = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
 
+            # --- MODIFICA 2: Logica per selezionare l'output corretto da mostrare ---
+            # Questa è la modifica cruciale per l'analisi qualitativa.
+            display_prediction = ""
+            if "<RDF2Text>" in source_text:
+                # Per la generazione di testo, mostriamo il testo pulito.
+                display_prediction = model_out_text_clean
+            elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
+                # Per la generazione di RDF, mostriamo l'output RAW con i token speciali.
+                display_prediction = model_out_text_raw
+            elif "<MASK>" in source_text:
+                # Per MLM, l'output è una singola entità, quindi il testo pulito va bene.
+                display_prediction = model_out_text_clean
+
+            # Aggiungi agli esempi qualitativi la versione corretta della predizione
             if len(qualitative_examples) < NUM_QUALITATIVE_EXAMPLES:
                 qualitative_examples.append(
-                    {"source": source_text, "prediction": model_out_text, "ground_truth": target_text})
+                    {"source": source_text, "prediction": display_prediction, "ground_truth": target_text})
 
+            # --- Il calcolo delle metriche rimane quasi invariato, ma ci assicuriamo che usi le variabili corrette ---
             if "<RDF2Text>" in source_text:
-                rdf2text_preds.append(model_out_text)
+                # Per le metriche testuali, usiamo l'output pulito
+                rdf2text_preds.append(model_out_text_clean)
                 rdf2text_labels.append([target_text])
             elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
+                # Per il parsing delle triple, usiamo l'output RAW
                 predicted_triples = parse_rdf_triples(model_out_text_raw)
-                true_triples = parse_rdf_triples(target_text)
+                true_triples = parse_rdf_triples(target_text)  # target_text ha già i token
                 rdf_gen_tp += len(predicted_triples.intersection(true_triples))
                 rdf_gen_fp += len(predicted_triples.difference(true_triples))
                 rdf_gen_fn += len(true_triples.difference(predicted_triples))
             elif "<MASK>" in source_text:
                 mlm_total += 1
-                if model_out_text.strip() == target_text.strip():
+                # Per l'accuracy di MLM, confrontiamo le stringhe pulite
+                if model_out_text_clean.strip() == target_text.strip():
                     mlm_correct += 1
 
-    # Calcolo e log delle metriche
+
     print("\n" + "=" * 80)
     if rdf2text_preds:
         bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)

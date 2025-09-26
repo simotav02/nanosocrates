@@ -2,24 +2,20 @@ from pathlib import Path
 
 
 def get_config():
-    """
-    Restituisce la configurazione per il training del modello NanoSocrates.
-    I percorsi sono relativi alla directory principale del progetto.
-    """
     return {
-        "batch_size": 8,
-        "num_epochs": 10,
-        "lr": 1e-5,
-        "seq_len": 256,
-        "d_model": 256,
-        "N": 2,  # Numero di blocchi Encoder/Decoder
-        "h": 4,  # Numero di teste di attenzione
-        "d_ff": 1024,  # Dimensione del layer FeedForward
+        "batch_size": 4,
+        "num_epochs": 20,
+        "lr": 3e-4,
+        "seq_len": 1024,
+        "d_model": 512,
+        "N": 6,  # Numero di blocchi Encoder/Decoder
+        "h": 8,  # Numero di teste di attenzione
+        "d_ff": 2048,  # Dimensione del layer FeedForward
         "dropout": 0.1,
 
         # --- Impostazioni per la validazione e il salvataggio ---
         "validate_every_n_epochs": 1,
-        "num_validation_examples": -1,  # Esegui validazione su N esempi, -1 per l'intero set
+        "num_validation_examples": 100,  # Esegui validazione su N esempi, -1 per l'intero set
         "model_folder": "weights",
         "model_basename": "nanosocrates_",
         "preload": None,  # Imposta un percorso a un modello .pt per riprendere il training
@@ -30,5 +26,5 @@ def get_config():
         "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer.json",
 
         # --- Impostazioni per TensorBoard ---
-        "experiment_name": "runs/nanosocrates_v2"
+        "experiment_name": "runs/nanosocrates_v1"
     }

@@ -139,7 +139,7 @@ def fetch_and_process_film_data(endpoint_url, limit=100):
 
 def main():
     DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-    FILM_LIMIT = 100
+    FILM_LIMIT = 1000
     OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}_final.json"
 
     final_data = fetch_and_process_film_data(DBPEDIA_SPARQL_ENDPOINT, FILM_LIMIT)

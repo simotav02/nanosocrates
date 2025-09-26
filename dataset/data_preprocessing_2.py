@@ -3,7 +3,7 @@ import random
 from tqdm import tqdm
 
 # --- CONFIGURAZIONE ---
-INPUT_JSON_FILE = "film_dataset_5000_final.json"
+INPUT_JSON_FILE = "film_dataset_1000_final.json"
 OUTPUT_DIR = "training_data"  # Creeremo file separati per input e output
 
 # Token speciali (invariati)

@@ -8,12 +8,6 @@ from tqdm import tqdm
 import warnings
 
 
-# ======================================================================================
-# SEZIONE 1: ARCHITETTURA DEL MODELLO (model.py)
-# Questa sezione contiene la definizione completa del modello Transformer,
-# con i commenti originali del professore.
-# ======================================================================================
-
 class LayerNormalization(nn.Module):
     def __init__(self, features: int, eps: float = 10 ** -6) -> None:
         super().__init__()

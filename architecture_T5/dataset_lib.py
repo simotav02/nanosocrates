@@ -1,14 +1,12 @@
-# dataset.py (MODIFICATO)
+# dataset_lib.py (MODIFICATO E DEFINITIVO)
 
 import torch
 from torch.utils.data import Dataset
 from tokenizers import Tokenizer
 
 
-def causal_mask(size):
-    mask = torch.triu(torch.ones((1, size, size)), diagonal=1).type(torch.int)
-    return mask == 0
-
+# La funzione causal_mask non è più necessaria in questo file.
+# Verrà gestita internamente dal modello o dalla logica di decoding.
 
 class NanoSocratesDataset(Dataset):
     def __init__(self, raw_ds, tokenizer: Tokenizer, seq_len: int):
@@ -17,7 +15,6 @@ class NanoSocratesDataset(Dataset):
         self.tokenizer = tokenizer
         self.raw_ds = raw_ds
 
-        # Otteniamo gli ID dei token speciali una sola volta
         self.pad_token_id = self.tokenizer.token_to_id("<PAD>")
         self.sot_token_id = self.tokenizer.token_to_id("<SOT>")
         self.eot_token_id = self.tokenizer.token_to_id("<EOT>")
@@ -29,30 +26,21 @@ class NanoSocratesDataset(Dataset):
         return len(self.raw_ds)
 
     def __getitem__(self, idx):
-        # Prendiamo la coppia sorgente-target dal dataset grezzo
         src_tgt_pair = self.raw_ds[idx]
         src_text = src_tgt_pair['source']
         tgt_text = src_tgt_pair['target']
 
-        # Tokenizziamo le sequenze di input e di target
         enc_input_tokens = self.tokenizer.encode(src_text).ids
         dec_input_tokens = self.tokenizer.encode(tgt_text).ids
 
-        # Gestiamo sequenze troppo lunghe (troncamento)
-        # Per l'encoder: [SOT] + source + [EOT] -> max_len = seq_len - 2
         if len(enc_input_tokens) > self.seq_len - 2:
             enc_input_tokens = enc_input_tokens[:self.seq_len - 2]
-
-        # Per il decoder: [SOT] + target -> max_len = seq_len - 1
-        # Per la label: target + [EOT] -> max_len = seq_len - 1
         if len(dec_input_tokens) > self.seq_len - 1:
             dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
 
-        # Calcoliamo il padding necessario DOPO il troncamento
         enc_padding_needed = self.seq_len - len(enc_input_tokens) - 2
         dec_padding_needed = self.seq_len - len(dec_input_tokens) - 1
 
-        # Input per l'Encoder: [SOT] + source_tokens + [EOT] + [PAD]...
         encoder_input = torch.cat([
             torch.tensor([self.sot_token_id], dtype=torch.int64),
             torch.tensor(enc_input_tokens, dtype=torch.int64),
@@ -60,21 +48,18 @@ class NanoSocratesDataset(Dataset):
             torch.tensor([self.pad_token_id] * enc_padding_needed, dtype=torch.int64)
         ])
 
-        # Input per il Decoder (teacher forcing): [SOT] + target_tokens + [PAD]...
         decoder_input = torch.cat([
             torch.tensor([self.sot_token_id], dtype=torch.int64),
             torch.tensor(dec_input_tokens, dtype=torch.int64),
             torch.tensor([self.pad_token_id] * dec_padding_needed, dtype=torch.int64)
         ])
 
-        # Label (ciò che il decoder deve predire): target_tokens + [EOT] + [PAD]...
         label = torch.cat([
             torch.tensor(dec_input_tokens, dtype=torch.int64),
             torch.tensor([self.eot_token_id], dtype=torch.int64),
             torch.tensor([self.pad_token_id] * dec_padding_needed, dtype=torch.int64)
         ])
 
-        # Assicuriamoci che tutti i tensori abbiano la lunghezza corretta
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
@@ -82,9 +67,12 @@ class NanoSocratesDataset(Dataset):
         return {
             "encoder_input": encoder_input,
             "decoder_input": decoder_input,
-            "encoder_mask": (encoder_input != self.pad_token_id).unsqueeze(0).unsqueeze(0).int(),
-            "decoder_mask": (decoder_input != self.pad_token_id).unsqueeze(0).int() & causal_mask(
-                decoder_input.size(0)),
+            # --- MODIFICA CHIAVE ---
+            # Generiamo maschere di padding semplici e booleane come richiesto da PyTorch.
+            # Saranno di shape (seq_len,). Il DataLoader le raggrupperà in (batch_size, seq_len).
+            # True indica una posizione da mascherare (ignorare).
+            "encoder_mask": (encoder_input == self.pad_token_id),
+            "decoder_mask": (decoder_input == self.pad_token_id),
             "label": label,
             "src_text": src_text,
             "tgt_text": tgt_text,

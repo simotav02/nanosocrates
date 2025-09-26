@@ -1,4 +1,4 @@
-# model.py (VERSIONE FINALE EFFICIENTE CON CORREZIONE DEL TIPO DI DATO)
+# model.py (MODIFICATO E DEFINITIVO)
 
 import torch
 import torch.nn as nn
@@ -36,6 +36,9 @@ class PositionalEncoding(nn.Module):
 class Transformer(nn.Module):
     def __init__(self, vocab_size: int, d_model: int, N: int, h: int, d_ff: int, seq_len: int, dropout: float):
         super().__init__()
+        self.d_model = d_model
+        self.seq_len = seq_len
+
         self.src_embed = InputEmbeddings(d_model, vocab_size)
         self.tgt_embed = InputEmbeddings(d_model, vocab_size)
         self.positional_encoding = PositionalEncoding(d_model, seq_len, dropout)
@@ -60,36 +63,32 @@ class Transformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def encode(self, src: torch.Tensor, src_mask: torch.Tensor) -> torch.Tensor:
+    def encode(self, src: torch.Tensor, src_padding_mask: torch.Tensor):
         src_emb = self.src_embed(src)
         src_pos = self.positional_encoding(src_emb)
-        src_padding_mask = (src_mask == 0).squeeze(1).squeeze(1)
         return self.encoder(src_pos, src_key_padding_mask=src_padding_mask)
 
-    def decode(self, encoder_output: torch.Tensor, src_mask: torch.Tensor, tgt: torch.Tensor,
-               tgt_mask: torch.Tensor) -> torch.Tensor:
+    def decode(self, encoder_output: torch.Tensor, src_padding_mask: torch.Tensor, tgt: torch.Tensor,
+               tgt_padding_mask: torch.Tensor):
         tgt_emb = self.tgt_embed(tgt)
         tgt_pos = self.positional_encoding(tgt_emb)
 
-        src_padding_mask = (src_mask == 0).squeeze(1).squeeze(1)
-
-        # --- MODIFICA CHIAVE QUI ---
-        # Prima di usare masked_fill_ con valori float, convertiamo la maschera a float.
-        # .clone() per non modificare il tensore originale.
-        # .float() per cambiare il tipo da int a float.
-        tgt_causal_mask = tgt_mask.clone().float()  # <--- AGGIUNTO .float()
-
-        # Ora questa operazione funzionerà perché tgt_causal_mask è di tipo float
-        tgt_causal_mask.masked_fill_(tgt_causal_mask == 0, float('-inf')).masked_fill_(tgt_causal_mask == 1, float(0.0))
+        # --- MODIFICA CHIAVE ---
+        # Generiamo la maschera causale dinamicamente in base alla lunghezza della sequenza target.
+        # Questo è necessario sia per il training (teacher forcing) sia per l'inferenza (greedy decode).
+        device = tgt.device
+        tgt_len = tgt.size(1)
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(tgt_len, device=device)
 
         return self.decoder(
             tgt=tgt_pos,
             memory=encoder_output,
-            tgt_mask=tgt_causal_mask,
+            tgt_mask=causal_mask,
+            tgt_key_padding_mask=tgt_padding_mask,
             memory_key_padding_mask=src_padding_mask
         )
 
-    def project(self, x: torch.Tensor) -> torch.Tensor:
+    def project(self, x: torch.Tensor):
         return self.projection_layer(x)
 
 

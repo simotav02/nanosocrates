@@ -1,7 +1,8 @@
+# train_lib.py (MODIFICATO E DEFINITIVO)
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-# from torch.optim.lr_scheduler import CosineAnnealingLR
 from tokenizers import Tokenizer
 from pathlib import Path
 from tqdm import tqdm
@@ -12,15 +13,13 @@ import evaluate
 
 from torch.utils.tensorboard import SummaryWriter
 
-# Importa i moduli custom del progetto
-from dataset_lib import NanoSocratesDataset, causal_mask
 from model import build_transformer
 from config import get_config
+# NOTA: Assicurati che il tuo dataset_lib sia importato correttamente
+from dataset_lib import NanoSocratesDataset
 
 
-# scheduler con warm-up
 def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
-
     def lr_lambda(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
@@ -31,20 +30,28 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
-# Le funzioni greedy_decode, parse_rdf_triples, run_validation, get_ds, get_model
-# rimangono invariate. Le ometto per brevità ma devono essere presenti nel tuo file.
-
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
     sot_idx = tokenizer.token_to_id('<SOT>')
     eot_idx = tokenizer.token_to_id('<EOT>')
+
+    # L'encoder viene chiamato solo una volta
     encoder_output = model.encode(source, source_mask)
+
+    # Inizia la sequenza del decoder con il token <SOT>
     decoder_input = torch.empty(1, 1).fill_(sot_idx).type_as(source).to(device)
+
     while True:
         if decoder_input.size(1) == max_len:
             break
-        # La maschera del decoder deve essere ricreata ad ogni step con la nuova dimensione
-        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
-        out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+
+        # --- MODIFICA CHIAVE IN GREEDY DECODE ---
+        # Durante l'inferenza, non c'è padding nella sequenza target generata.
+        # Quindi, la maschera di padding per il decoder è None.
+        decoder_padding_mask = None  # o torch.zeros(1, decoder_input.size(1), dtype=torch.bool, device=device)
+
+        # Chiamiamo il modello con le maschere corrette
+        out = model.decode(encoder_output, source_mask, decoder_input, decoder_padding_mask)
+
         prob = model.project(out[:, -1])
         _, next_word = torch.max(prob, dim=1)
         decoder_input = torch.cat(
@@ -53,6 +60,7 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
         )
         if next_word.item() == eot_idx:
             break
+
     return decoder_input.squeeze(0)
 
 
@@ -85,10 +93,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         for i, batch in enumerate(tqdm(validation_ds, desc="Validating")):
             if i == count:
                 break
+            # Le maschere ora sono solo per il padding
             encoder_input = batch["encoder_input"].to(device)
-            encoder_mask = batch["encoder_mask"].to(device)
+            encoder_padding_mask = batch["encoder_mask"].to(device)
 
-            model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
+            model_out_tokens = greedy_decode(model, encoder_input, encoder_padding_mask, tokenizer, max_len, device)
 
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
@@ -109,18 +118,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                     {"source": source_text, "prediction": display_prediction, "ground_truth": target_text})
 
             if "<RDF2Text>" in source_text:
-                # --- MODIFICA CHIAVE PER EVITARE IL CRASH ---
-                # Se la stringa generata è vuota dopo la pulizia dei token speciali,
-                # la sostituiamo con un placeholder (es. un punto).
-                # Questo evita la divisione per zero nella metrica BLEU,
-                # pur assegnando un punteggio (giustamente) molto basso.
                 if not model_out_text_clean.strip():
                     rdf2text_preds.append(".")
                 else:
                     rdf2text_preds.append(model_out_text_clean)
-
                 rdf2text_labels.append([target_text])
-
             elif "<Text2RDF>" in source_text or "<CONTINUERDF>" in source_text:
                 predicted_triples = parse_rdf_triples(model_out_text_raw)
                 true_triples = parse_rdf_triples(target_text)
@@ -132,9 +134,8 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 if model_out_text_clean.strip() == target_text.strip():
                     mlm_correct += 1
 
+    # Il resto della funzione rimane invariato
     print("\n" + "=" * 80)
-
-    # Aggiungiamo un controllo per assicurarci che ci siano predizioni da valutare
     if rdf2text_preds:
         bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
         rouge_score = rouge_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels)
@@ -146,7 +147,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         writer.add_scalar('validation/bleu', bleu_score['bleu'], global_step)
         writer.add_scalar('validation/rougeL', rouge_score['rougeL'], global_step)
         writer.add_scalar('validation/meteor', meteor_score['meteor'], global_step)
-
     if (rdf_gen_tp + rdf_gen_fp > 0) or (rdf_gen_tp + rdf_gen_fn > 0):
         precision = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fp) if (rdf_gen_tp + rdf_gen_fp) > 0 else 0
         recall = rdf_gen_tp / (rdf_gen_tp + rdf_gen_fn) if (rdf_gen_tp + rdf_gen_fn) > 0 else 0
@@ -156,13 +156,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         writer.add_scalar('validation/rdf_f1', f1, global_step)
         writer.add_scalar('validation/rdf_precision', precision, global_step)
         writer.add_scalar('validation/rdf_recall', recall, global_step)
-
     if mlm_total > 0:
         accuracy = mlm_correct / mlm_total
         print("--- RDF Completion 1 (MLM) Metrics ---")
         print(f"Accuracy: {accuracy:.4f}\n")
         writer.add_scalar('validation/mlm_accuracy', accuracy, global_step)
-
     print("=" * 80)
     print("--- Esempi Qualitativi ---")
     for idx, example in enumerate(qualitative_examples):
@@ -171,41 +169,32 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         print(f"RIFERIMENTO: {example['ground_truth']}")
         print(f"PREDIZIONE : '{example['prediction']}'")
     print("\n" + "=" * 80 + "\n")
-
     model.train()
 
 
 def get_ds(config):
+    # Questa funzione rimane invariata
     tokenizer = Tokenizer.from_file(str(Path(config['tokenizer_file'])))
     raw_ds = []
     with open(os.path.join(config['data_dir'], "train.source"), 'r', encoding='utf-8') as f_src, \
             open(os.path.join(config['data_dir'], "train.target"), 'r', encoding='utf-8') as f_tgt:
         for src_line, tgt_line in zip(f_src, f_tgt):
             raw_ds.append({'source': src_line.strip(), 'target': tgt_line.strip()})
-
     train_ds_size = int(0.9 * len(raw_ds))
     val_ds_size = len(raw_ds) - train_ds_size
     train_ds_raw, val_ds_raw = random_split(raw_ds, [train_ds_size, val_ds_size])
-
     train_ds = NanoSocratesDataset(train_ds_raw, tokenizer, config['seq_len'])
     val_ds = NanoSocratesDataset(val_ds_raw, tokenizer, config['seq_len'])
-
     train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
     val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False)
-
     return train_dataloader, val_dataloader, tokenizer
 
 
 def get_model(config, vocab_size):
-    # Assicurati che il modello sia quello finale, con i moduli separati per src/tgt
+    # Questa funzione rimane invariata
     model = build_transformer(
-        vocab_size=vocab_size,
-        seq_len=config["seq_len"],
-        d_model=config['d_model'],
-        N=config['N'],
-        h=config['h'],
-        dropout=config['dropout'],
-        d_ff=config['d_ff']
+        vocab_size=vocab_size, seq_len=config["seq_len"], d_model=config['d_model'],
+        N=config['N'], h=config['h'], dropout=config['dropout'], d_ff=config['d_ff']
     )
     return model
 
@@ -237,22 +226,15 @@ def train_model(config):
         global_step = state['global_step']
         print(f"Resuming training from epoch {initial_epoch}, global step {global_step}")
 
-    # --- MODIFICA 3: Configurazione dello scheduler con warm-up lineare ---
     num_training_steps = len(train_dataloader) * config['num_epochs']
-    num_warmup_steps = int(num_training_steps * 0.1)  # 10% di warm-up
-
+    num_warmup_steps = int(num_training_steps * 0.1)
     scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps
+        optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps
     )
-
-    # Porta lo scheduler allo step corretto se si riprende il training
     if config['preload']:
         for _ in range(global_step):
             scheduler.step()
 
-    # Per il training reale, riabilitiamo il label smoothing!
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'), label_smoothing=0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
@@ -265,11 +247,14 @@ def train_model(config):
 
             encoder_input = batch['encoder_input'].to(device)
             decoder_input = batch['decoder_input'].to(device)
-            encoder_mask = batch['encoder_mask'].to(device)
-            decoder_mask = batch['decoder_mask'].to(device)
+            # --- MODIFICA CHIAVE NEL TRAINING LOOP ---
+            # Le maschere ora sono solo di padding
+            encoder_padding_mask = batch['encoder_mask'].to(device)
+            decoder_padding_mask = batch['decoder_mask'].to(device)
 
-            encoder_output = model.encode(encoder_input, encoder_mask)
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+            encoder_output = model.encode(encoder_input, encoder_padding_mask)
+            decoder_output = model.decode(encoder_output, encoder_padding_mask, decoder_input, decoder_padding_mask)
+
             proj_output = model.project(decoder_output)
 
             label = batch['label'].to(device)
@@ -284,13 +269,9 @@ def train_model(config):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
-            # Lo scheduler si aggiorna ad ogni STEP
             scheduler.step()
-
             global_step += 1
 
-        # Esegui validazione e salva il modello alla fine di ogni epoca
         run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
                        config['num_validation_examples'])
 

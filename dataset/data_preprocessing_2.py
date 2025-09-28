@@ -139,8 +139,15 @@ def main():
     print("Bilanciamento del dataset...")
     random.shuffle(mlm_task_candidates)
 
+    # num_heavy_tasks = len(heavy_tasks_examples)
+    # selected_mlm_examples = mlm_task_candidates[:num_heavy_tasks]
+
+    # Vogliamo che i task generativi siano circa il 75% del totale.
+    # Quindi, il numero di esempi MLM dovrebbe essere circa 1/3 del numero degli altri task.
     num_heavy_tasks = len(heavy_tasks_examples)
-    selected_mlm_examples = mlm_task_candidates[:num_heavy_tasks]
+    num_mlm_to_select = num_heavy_tasks // 3  # Riduciamo drasticamente gli esempi MLM
+
+    selected_mlm_examples = mlm_task_candidates[:num_mlm_to_select]
 
     print(f"Selezionati {len(selected_mlm_examples)} esempi MLM per il bilanciamento.")
 

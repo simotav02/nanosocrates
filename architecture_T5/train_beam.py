@@ -1,3 +1,5 @@
+# train_lib.py (COMPLETO E DEFINITIVO CON BEAM SEARCH)
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
@@ -11,6 +13,8 @@ import evaluate
 
 from torch.utils.tensorboard import SummaryWriter
 
+# Assicurati che questi import puntino ai file corretti
+# Se hai rinominato model_lib.py in model.py, questo import è corretto.
 from model_lib import build_transformer
 from config import get_config
 from dataset_lib import NanoSocratesDataset
@@ -27,36 +31,78 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
-def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
+# --- NUOVA FUNZIONE DI DECODIFICA: BEAM SEARCH ---
+def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len, device):
     sot_idx = tokenizer.token_to_id('<SOT>')
     eot_idx = tokenizer.token_to_id('<EOT>')
 
+    # Pre-calcola l'output dell'encoder (chiamato una sola volta)
     encoder_output = model.encode(source, source_mask)
-    decoder_input = torch.empty(1, 1).fill_(sot_idx).type_as(source).to(device)
 
-    while True:
-        if decoder_input.size(1) == max_len:
+    # Inizializza il beam. Ogni elemento è una tupla: (sequenza, score)
+    # Lo score iniziale è 0.0 (che corrisponde a log(1.0))
+    initial_input = torch.empty(1, 1).fill_(sot_idx).type_as(source).to(device)
+    beams = [(initial_input, 0.0)]
+
+    completed_beams = []
+
+    for _ in range(max_len - 1):  # Loop al massimo per max_len-1 step
+        new_beams = []
+
+        # Flag per interrompere se non ci sono più beam attivi da espandere
+        has_active_beams = False
+
+        for candidate_seq, candidate_score in beams:
+            # Se un candidato ha già terminato con <EOT>, non espanderlo.
+            # Aggiungilo ai risultati finali e passa al prossimo.
+            if candidate_seq[0, -1].item() == eot_idx:
+                completed_beams.append((candidate_seq, candidate_score))
+                continue
+
+            has_active_beams = True
+
+            # --- GESTIONE MASCHERE CORRETTA PER T5 ---
+            # Il modello gestisce la causalità internamente. Passiamo None per la maschera del decoder.
+            decoder_padding_mask = None
+
+            # Esegui il decoding sul candidato attuale
+            out = model.decode(encoder_output, source_mask, candidate_seq, decoder_padding_mask)
+
+            # --- USO CORRETTO DELLE LOG-PROBABILITÀ ---
+            # Applica log_softmax per ottenere log-probabilità, matematicamente corretto e stabile
+            log_probs = torch.log_softmax(model.project(out[:, -1]), dim=-1)
+
+            # Prendi i top-k token successivi (i più probabili)
+            topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
+
+            # Espandi il beam con i nuovi candidati
+            for i in range(beam_size):
+                token_idx = topk_idx[0, i].unsqueeze(0).unsqueeze(0)
+                token_log_prob = topk_log_probs[0, i].item()
+
+                new_seq = torch.cat([candidate_seq, token_idx], dim=1)
+                new_score = candidate_score + token_log_prob  # Somma le log-probabilità
+
+                new_beams.append((new_seq, new_score))
+
+        # Se non ci sono più beam attivi, possiamo interrompere prima
+        if not has_active_beams:
             break
 
-        # Logica di masking corretta per l'inferenza T5
-        decoder_padding_mask = None
+        # Ordina tutti i nuovi candidati in base al loro score normalizzato e prendi i migliori `beam_size`
+        # La normalizzazione per lunghezza (length penalty) è cruciale per non favorire sequenze troppo corte.
+        beams = sorted(new_beams, key=lambda x: x[1] / (x[0].size(1) ** 0.7), reverse=True)[:beam_size]
 
-        out = model.decode(encoder_output, source_mask, decoder_input, decoder_padding_mask)
+    # Aggiungi i beam rimasti (che potrebbero non aver raggiunto <EOT>) alla lista dei completati
+    completed_beams.extend(beams)
 
-        prob = model.project(out[:, -1])
-        _, next_word = torch.max(prob, dim=1)
-        decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)],
-            dim=1
-        )
-        if next_word.item() == eot_idx:
-            break
+    # Scegli il miglior beam tra tutti quelli completati, usando lo score normalizzato per lunghezza
+    best_beam = sorted(completed_beams, key=lambda x: x[1] / (x[0].size(1) ** 0.7), reverse=True)[0]
 
-    return decoder_input.squeeze(0)
+    return best_beam[0].squeeze()
 
 
 def parse_rdf_triples(text: str) -> set:
-    # ... (invariato)
     triples = set()
     pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
     matches = pattern.findall(text)
@@ -68,7 +114,6 @@ def parse_rdf_triples(text: str) -> set:
 
 
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run):
-    # ... (invariato, ma ora riceve le maschere corrette)
     model.eval()
     count = -1 if num_examples_to_run == -1 else num_examples_to_run
 
@@ -77,6 +122,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
     mlm_correct, mlm_total = 0, 0
     qualitative_examples = []
     NUM_QUALITATIVE_EXAMPLES = 5
+    BEAM_SIZE = 5  # Iperparametro per il beam search
 
     bleu_metric = evaluate.load("bleu")
     rouge_metric = evaluate.load("rouge")
@@ -86,20 +132,32 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         for i, batch in enumerate(tqdm(validation_ds, desc="Validating")):
             if i == count:
                 break
+
             encoder_input = batch["encoder_input"].to(device)
             encoder_padding_mask = batch["encoder_mask"].to(device)
 
-            model_out_tokens = greedy_decode(model, encoder_input, encoder_padding_mask, tokenizer, max_len, device)
+            # --- MODIFICA CHIAVE: USO DEL BEAM SEARCH DECODE ---
+            model_out_tokens = beam_search_decode(
+                model,
+                beam_size=BEAM_SIZE,
+                source=encoder_input,
+                source_mask=encoder_padding_mask,
+                tokenizer=tokenizer,
+                max_len=max_len,
+                device=device
+            )
 
-            # ... resto della funzione invariato ...
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
+
             model_out_text_clean = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=True)
             model_out_text_raw = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
+
             if len(qualitative_examples) < NUM_QUALITATIVE_EXAMPLES:
                 display_prediction = model_out_text_clean if "<RDF2Text>" in source_text or "<MASK>" in source_text else model_out_text_raw
                 qualitative_examples.append(
                     {"source": source_text, "prediction": display_prediction, "ground_truth": target_text})
+
             if "<RDF2Text>" in source_text:
                 if not model_out_text_clean.strip():
                     rdf2text_preds.append(".")
@@ -116,6 +174,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 mlm_total += 1
                 if model_out_text_clean.strip() == target_text.strip():
                     mlm_correct += 1
+
     print("\n" + "=" * 80)
     if rdf2text_preds:
         bleu_score = bleu_metric.compute(predictions=rdf2text_preds, references=rdf2text_labels);
@@ -154,7 +213,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
 
 def get_ds(config):
-    # ... (invariato)
     tokenizer = Tokenizer.from_file(str(Path(config['tokenizer_file'])))
     raw_ds = []
     with open(os.path.join(config['data_dir'], "train.source"), 'r', encoding='utf-8') as f_src, open(
@@ -172,14 +230,12 @@ def get_ds(config):
 
 
 def get_model(config, vocab_size):
-    # ... (invariato)
     model = build_transformer(vocab_size=vocab_size, seq_len=config["seq_len"], d_model=config['d_model'],
                               N=config['N'], h=config['h'], dropout=config['dropout'], d_ff=config['d_ff'])
     return model
 
 
 def train_model(config):
-    # ... (il corpo principale della funzione è identico, ma ora usa le variabili corrette per le maschere)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if not torch.cuda.is_available() and torch.backends.mps.is_available(): device = "mps"
     print(f"Using device: {device}")
@@ -229,12 +285,16 @@ def train_model(config):
             optimizer.step();
             scheduler.step();
             global_step += 1
+
+        # Esegui validazione e salva il modello
         run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
                        config['num_validation_examples'])
+
         model_filename = f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt"
         torch.save(
             {'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(),
              'global_step': global_step}, model_filename)
+
     writer.close()
 
 

@@ -1,14 +1,11 @@
-# model.py (VERSIONE FINALE E DEFINITIVA CON RELATIVE BIAS)
-
 import torch
 from torch import nn
 import torch.nn.functional as F
 import math
 from einops import rearrange
 
-
 # --- MODULO 1: Codice per i T5 Relative Positional Bias ---
-# (Invariato)
+
 class T5RelativePositionBias(nn.Module):
     def __init__(self, scale, causal=False, num_buckets=32, max_distance=128, heads=8):
         super().__init__()
@@ -41,18 +38,15 @@ class T5RelativePositionBias(nn.Module):
     def forward(self, qk_dots):
         seq_len_q, seq_len_k = qk_dots.shape[-2], qk_dots.shape[-1]
         device = qk_dots.device
-
         q_pos = torch.arange(seq_len_q, dtype=torch.long, device=device)
         k_pos = torch.arange(seq_len_k, dtype=torch.long, device=device)
-
         rel_pos = k_pos[None, :] - q_pos[:, None]
-
         rp_bucket = self._relative_position_bucket(
             rel_pos, causal=self.causal, num_buckets=self.num_buckets, max_distance=self.max_distance
         )
         values = self.relative_attention_bias(rp_bucket)
         bias = rearrange(values, 'i j h -> h i j')
-        return qk_dots + bias  # La scala viene già applicata ai punteggi prima
+        return qk_dots + bias
 
 
 # --- MODULO 2: Componenti Base del Transformer ---
@@ -79,23 +73,25 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
+# --- L'attention ora è un singolo modulo flessibile ---
 class T5Attention(nn.Module):
-    def __init__(self, d_model, heads, causal=False, dropout=0.1, dim_head=64):
+    def __init__(self, d_model, heads, causal=False, use_relative_bias=True, dropout=0.1, dim_head=64):
         super().__init__()
         inner_dim = dim_head * heads
         self.heads = heads
         self.scale = dim_head ** -0.5
         self.causal = causal
+        self.use_relative_bias = use_relative_bias
 
         self.to_q = nn.Linear(d_model, inner_dim, bias=False)
         self.to_k = nn.Linear(d_model, inner_dim, bias=False)
         self.to_v = nn.Linear(d_model, inner_dim, bias=False)
         self.to_out = nn.Linear(inner_dim, d_model)
 
-        self.relative_position_bias = T5RelativePositionBias(
-            scale=self.scale, causal=causal, heads=heads
-        )
+        if self.use_relative_bias:
+            self.relative_position_bias = T5RelativePositionBias(
+                scale=self.scale, causal=causal, heads=heads
+            )
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, context=None, mask=None, context_mask=None):
@@ -107,7 +103,8 @@ class T5Attention(nn.Module):
 
         sim = torch.einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
-        sim = self.relative_position_bias(sim)
+        if self.use_relative_bias:
+            sim = self.relative_position_bias(sim)
 
         mask_value = -torch.finfo(sim.dtype).max
 
@@ -116,11 +113,15 @@ class T5Attention(nn.Module):
             causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
             sim = sim.masked_fill(causal_mask, mask_value)
 
+        # La maschera di padding (True dove c'è PAD) viene espansa per il broadcasting
         if mask is not None:
-            sim = sim.masked_fill(mask.unsqueeze(1).unsqueeze(2), mask_value)
+            # mask shape: (b, i) -> (b, 1, 1, i)
+            sim = sim.masked_fill(mask.unsqueeze(1).unsqueeze(-1), mask_value)
 
         if context_mask is not None:
+            # context_mask shape: (b, j) -> (b, 1, j, 1) -> broadcast su i
             sim = sim.masked_fill(context_mask.unsqueeze(1).unsqueeze(2), mask_value)
+
 
         attn = sim.softmax(dim=-1)
         attn = self.dropout(attn)
@@ -136,7 +137,7 @@ class T5Attention(nn.Module):
 class EncoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout):
         super().__init__()
-        self.attn = T5Attention(d_model, heads, causal=False, dropout=dropout, dim_head=d_model // heads)
+        self.attn = T5Attention(d_model, heads, causal=False, use_relative_bias=True, dropout=dropout, dim_head=d_model // heads)
         self.ffn = FeedForward(d_model, d_ff, dropout=dropout)
         self.norm1 = T5LayerNorm(d_model)
         self.norm2 = T5LayerNorm(d_model)
@@ -152,8 +153,10 @@ class DecoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout):
         super().__init__()
         dim_head = d_model // heads
-        self.self_attn = T5Attention(d_model, heads, causal=True, dropout=dropout, dim_head=dim_head)
-        self.cross_attn = T5Attention(d_model, heads, causal=False, dropout=dropout, dim_head=dim_head)
+        # Self-Attention nel decoder: è CAUSALE e usa il BIAS RELATIVO
+        self.self_attn = T5Attention(d_model, heads, causal=True, use_relative_bias=True, dropout=dropout, dim_head=dim_head)
+        # Cross-Attention: NON è causale e NON usa il BIAS RELATIVO
+        self.cross_attn = T5Attention(d_model, heads, causal=False, use_relative_bias=False, dropout=dropout, dim_head=dim_head)
         self.ffn = FeedForward(d_model, d_ff, dropout=dropout)
         self.norm1 = T5LayerNorm(d_model)
         self.norm2 = T5LayerNorm(d_model)
@@ -161,13 +164,15 @@ class DecoderBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, context, src_mask, tgt_mask):
+        # Self-attention con maschera target (padding + causale)
         x = x + self.dropout(self.self_attn(self.norm1(x), mask=tgt_mask))
+        # Cross-attention con maschera sorgente (solo padding)
         x = x + self.dropout(self.cross_attn(self.norm2(x), context=context, context_mask=src_mask))
         x = x + self.dropout(self.ffn(self.norm3(x)))
         return x
 
 
-# --- MODULO 4: Modello Transformer Completo ---
+# --- MODULO 4: Modello Transformer Completo (invariato) ---
 
 class InputEmbeddings(nn.Module):
     def __init__(self, d_model: int, vocab_size: int) -> None:
@@ -184,16 +189,11 @@ class Transformer(nn.Module):
         super().__init__()
         self.embedding = InputEmbeddings(d_model, vocab_size)
         self.dropout = nn.Dropout(dropout)
-
         self.encoder_blocks = nn.ModuleList([EncoderBlock(d_model, h, d_ff, dropout) for _ in range(N)])
         self.decoder_blocks = nn.ModuleList([DecoderBlock(d_model, h, d_ff, dropout) for _ in range(N)])
-
         self.encoder_norm = T5LayerNorm(d_model)
         self.decoder_norm = T5LayerNorm(d_model)
-
         self.projection_layer = nn.Linear(d_model, vocab_size)
-
-        # Inizializziamo i pesi
         self.apply(self._init_weights)
 
     def _init_weights(self, module):

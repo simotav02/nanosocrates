@@ -4,11 +4,11 @@ from pathlib import Path
 def get_config():
     return {
         "batch_size": 4,
-        "num_epochs": 30,
+        "num_epochs": 15,
         "lr": 3e-4,
         "seq_len": 512,
         "d_model": 512,
-        "N": 4,  # Numero di blocchi Encoder/Decoder
+        "N": 6,  # Numero di blocchi Encoder/Decoder
         "h": 8,  # Numero di teste di attenzione
         "d_ff": 2048,  # Dimensione del layer FeedForward
         "dropout": 0.1,

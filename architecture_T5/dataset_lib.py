@@ -1,12 +1,6 @@
-# dataset_lib.py (MODIFICATO E DEFINITIVO)
-
 import torch
 from torch.utils.data import Dataset
 from tokenizers import Tokenizer
-
-
-# La funzione causal_mask non è più necessaria in questo file.
-# Verrà gestita internamente dal modello o dalla logica di decoding.
 
 class NanoSocratesDataset(Dataset):
     def __init__(self, raw_ds, tokenizer: Tokenizer, seq_len: int):
@@ -33,14 +27,17 @@ class NanoSocratesDataset(Dataset):
         enc_input_tokens = self.tokenizer.encode(src_text).ids
         dec_input_tokens = self.tokenizer.encode(tgt_text).ids
 
+        # Troncamento per far spazio ai token speciali
         if len(enc_input_tokens) > self.seq_len - 2:
             enc_input_tokens = enc_input_tokens[:self.seq_len - 2]
         if len(dec_input_tokens) > self.seq_len - 1:
             dec_input_tokens = dec_input_tokens[:self.seq_len - 1]
 
+        # Padding
         enc_padding_needed = self.seq_len - len(enc_input_tokens) - 2
         dec_padding_needed = self.seq_len - len(dec_input_tokens) - 1
 
+        # Costruzione tensori
         encoder_input = torch.cat([
             torch.tensor([self.sot_token_id], dtype=torch.int64),
             torch.tensor(enc_input_tokens, dtype=torch.int64),
@@ -67,10 +64,9 @@ class NanoSocratesDataset(Dataset):
         return {
             "encoder_input": encoder_input,
             "decoder_input": decoder_input,
-            # --- MODIFICA CHIAVE ---
-            # Generiamo maschere di padding semplici e booleane come richiesto da PyTorch.
+            # Generiamo maschere di padding semplici e booleane come richiesto dal modello T5.
             # Saranno di shape (seq_len,). Il DataLoader le raggrupperà in (batch_size, seq_len).
-            # True indica una posizione da mascherare (ignorare).
+            # True indica una posizione da mascherare (ignorare), ovvero un PAD.
             "encoder_mask": (encoder_input == self.pad_token_id),
             "decoder_mask": (decoder_input == self.pad_token_id),
             "label": label,

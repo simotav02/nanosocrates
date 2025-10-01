@@ -1,7 +1,7 @@
 import os
 from collections import Counter
 
-INPUT_DIR = "training_data"
+INPUT_DIR = "training_data_cleaned"
 
 # I token speciali che definiscono i task. Devono corrispondere a quelli usati nello script di generazione.
 TEXT_TO_RDF_TOKEN = "<Text2RDF>"

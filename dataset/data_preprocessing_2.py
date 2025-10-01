@@ -1,177 +1,196 @@
-# data_preprocessing_2.py (MODIFICATO PER UN CORRETTO ALLINEAMENTO DEI DATI)
-
 import json
 import random
 from tqdm import tqdm
 import os
 import re
+from collections import defaultdict, Counter
 
 # --- CONFIGURAZIONE ---
-INPUT_JSON_FILE = "film_dataset_1000_final.json"
-OUTPUT_DIR = "training_data"
+INPUT_JSON_FILE = "film_dataset_3000_final.json"  # Assicurati che sia il nome corretto del tuo file JSON grande
+OUTPUT_DIR = "training_data_cleaned"
 
-# Token speciali (invariati)
-SOT_TOKEN = "<SOT>"
-EOT_TOKEN = "<EOT>"
+# Token speciali
+SOT_TOKEN = "<SOT>";
+EOT_TOKEN = "<EOT>";
 SUBJ_TOKEN = "<SUBJ>"
-PRED_TOKEN = "<PRED>"
-OBJ_TOKEN = "<OBJ>"
+PRED_TOKEN = "<PRED>";
+OBJ_TOKEN = "<OBJ>";
 MASK_TOKEN = "<MASK>"
-TEXT_TO_RDF_TOKEN = "<Text2RDF>"
+TEXT_TO_RDF_TOKEN = "<Text2RDF>";
 RDF_TO_TEXT_TOKEN = "<RDF2Text>"
-CONTINUE_RDF_TOKEN = "<CONTINUERDF>"
+CONTINUE_RDF_TOKEN = "<CONTINUERDF>";
 MLM_TOKEN = "<MLM>"
 
 
 def linearize_triples(triples):
     """Converte una lista di triple in una singola stringa serializzata."""
-    if not triples:
-        return ""
-    serialized_parts = []
-    for triple in triples:
-        part = (f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} "
-                f"{PRED_TOKEN} {triple['predicate']} "
-                f"{OBJ_TOKEN} {triple['object']} {EOT_TOKEN}")
-        serialized_parts.append(part)
-    return " ".join(serialized_parts)
+    if not triples: return ""
+    return " ".join(
+        [f"{SOT_TOKEN} {SUBJ_TOKEN} {t['subject']} {PRED_TOKEN} {t['predicate']} {OBJ_TOKEN} {t['object']} {EOT_TOKEN}"
+         for t in triples])
 
 
-# --- NUOVA FUNZIONE DI CONTROLLO PER L'ALLINEAMENTO ---
 def is_entity_in_text(entity: str, text: str) -> bool:
-    if not isinstance(entity, str):
-        return False
-
-    # 1. Rimuove il prefisso (es. 'dbr:')
-    entity_name = entity.split(':')[-1]
-    # 2. Sostituisce gli underscore con spazi
-    entity_name = entity_name.replace('_', ' ')
-    # 3. Rimuove eventuali qualificatori tra parentesi (es. "(film)")
+    """Controlla se un'entità (es. 'dbr:Christopher_Nolan') è menzionata in un testo."""
+    if not isinstance(entity, str): return False
+    entity_name = entity.split(':')[-1].replace('_', ' ')
     entity_name = re.sub(r'\(.*?\)', '', entity_name).strip()
-
-    # Se il nome dell'entità è vuoto dopo la pulizia, non possiamo validarlo.
-    if not entity_name:
-        return False
-
-    # 4. Controlla se tutte le parole del nome dell'entità sono presenti nel testo (case-insensitive)
-    #    Questo è un controllo più robusto di una semplice ricerca di sottostringa.
-    entity_words = entity_name.lower().split()
-    text_lower = text.lower()
-
-    return all(word in text_lower for word in entity_words)
+    if not entity_name: return False
+    return all(word in text.lower() for word in entity_name.lower().split())
 
 
 def main():
     """
-    Funzione principale che legge il JSON, genera gli esempi bilanciati
-    e li salva in file di training separati.
+    Funzione principale che legge il JSON, applica regole di pulizia,
+    genera gli esempi con logiche avanzate e li salva nei file di training.
     """
     print(f"Caricamento dati da '{INPUT_JSON_FILE}'...")
     with open(INPUT_JSON_FILE, 'r', encoding='utf-8') as f:
         all_films_data = json.load(f)
 
-    heavy_tasks_examples = []
-    mlm_task_candidates = []
+    print(f"Trovati {len(all_films_data)} record totali nel file JSON.")
 
-    print("Generazione degli esempi di addestramento...")
-    for film_data in tqdm(all_films_data, desc="Processando i film"):
+    text2rdf_examples = [];
+    rdf2text_examples = [];
+    continuerdf_examples = []
+    mlm_candidates = []
+
+    records_processed, records_kept = 0, 0
+    rejection_reasons = Counter()
+
+    print("Inizio fase di pulizia e generazione degli esempi...")
+    for film_data in tqdm(all_films_data, desc="Processando e filtrando i film"):
+        records_processed += 1
+
+        title = film_data.get("title", "").strip()
+        subject_uri = film_data.get("subject_uri", "").strip()
         abstract = film_data.get("abstract", "").strip()
         all_triples = film_data.get("triples", [])
 
-        if not abstract or not all_triples:
+        # --- BLOCCO DI VALIDAZIONE E PULIZIA DEL RECORD ---
+        # Regola 1: Dati essenziali mancanti
+        if not all([title, subject_uri, abstract, all_triples]):
+            rejection_reasons['dati_mancanti'] += 1;
+            continue
+        # Regola 2: Coerenza del soggetto
+        all_triples = [t for t in all_triples if t.get('subject') == subject_uri]
+        if not all_triples:
+            rejection_reasons['nessuna_tripla_coerente'] += 1;
+            continue
+        # Regola 3: Completezza minima delle triple
+        predicates_in_record = {t['predicate'] for t in all_triples}
+        if not {"dbo:director", "dbo:starring"}.issubset(predicates_in_record):
+            rejection_reasons['triple_incomplete'] += 1;
+            continue
+        # Regola 4: Lunghezza minima dell'abstract
+        if len(abstract) < 250:
+            rejection_reasons['abstract_troppo_corto'] += 1;
+            continue
+        # --- REGOLA 5 RIMOSSA ---
+        # Regola 6: Coerenza Titolo-Abstract
+        title_cleaned = title.split('(')[0].strip()
+        if not title_cleaned or title_cleaned.lower() not in abstract.lower():
+            rejection_reasons['titolo_non_in_abstract'] += 1;
             continue
 
-        # --- MODIFICA CHIAVE: Filtro delle triple per il task Text2RDF ---
-        # Per il task Text2RDF, creiamo una lista di triple "oneste", ovvero
-        # solo quelle il cui oggetto è effettivamente menzionato nell'abstract.
-        # Questo risolve il problema di chiedere al modello di predire informazioni
-        # che non può conoscere (come 'Matt Dallas' in un testo che non lo nomina).
-        text2rdf_triples = [
-            t for t in all_triples
-            if is_entity_in_text(t['object'], abstract)
-        ]
+        records_kept += 1
 
-        # --- Task 1: Text2RDF ---
-        # Generiamo un esempio Text2RDF solo se ci sono triple valide da estrarre.
+        # --- GENERAZIONE DEGLI ESEMPI DAI DATI PULITI ---
+        text2rdf_triples = [t for t in all_triples if is_entity_in_text(t['object'], abstract)]
         if text2rdf_triples:
-            input_text1 = f"{abstract} {TEXT_TO_RDF_TOKEN}"
-            output_text1 = linearize_triples(text2rdf_triples)
-            heavy_tasks_examples.append({"input": input_text1, "output": output_text1})
+            text2rdf_examples.append(
+                {"input": f"{abstract} {TEXT_TO_RDF_TOKEN}", "output": linearize_triples(text2rdf_triples)})
 
-        # --- Task 2: RDF2Text ---
-        # Per questo task, è corretto usare TUTTE le triple, perché vogliamo
-        # che il modello impari a generare un testo a partire da un grafo di conoscenza completo.
-        input_text2 = f"{linearize_triples(all_triples)} {RDF_TO_TEXT_TOKEN}"
-        output_text2 = abstract
-        heavy_tasks_examples.append({"input": input_text2, "output": output_text2})
+        rdf2text_examples.append({"input": f"{linearize_triples(all_triples)} {RDF_TO_TEXT_TOKEN}", "output": abstract})
 
-        # --- Task 4: RDF Completion 2 (CONTINUERDF) ---
-        # Anche qui, usiamo tutte le triple, poiché il task è la completazione del grafo.
-        if len(all_triples) > 1:
-            split_point = random.randint(1, len(all_triples) - 1)
-            context_triples = all_triples[:split_point]
-            completion_triples = all_triples[split_point:]
+        triples_by_predicate = defaultdict(list)
+        for t in all_triples: triples_by_predicate[t['predicate']].append(t)
+        for _, triples_group in triples_by_predicate.items():
+            if len(triples_group) > 1:
+                split_point = random.randint(1, len(triples_group) - 1)
+                context, completion = triples_group[:split_point], triples_group[split_point:]
+                continuerdf_examples.append({"input": f"{linearize_triples(context)} {CONTINUE_RDF_TOKEN}",
+                                             "output": linearize_triples(completion)})
 
-            input_text4 = f"{linearize_triples(context_triples)} {CONTINUE_RDF_TOKEN}"
-            output_text4 = linearize_triples(completion_triples)
-            heavy_tasks_examples.append({"input": input_text4, "output": output_text4})
-
-        # --- Raccolta candidati per Task 3 (MLM) ---
-        # Questo task si basa su triple individuali, quindi usiamo tutte le triple.
-        # La logica originale era già corretta.
         for triple in all_triples:
-            # Mascheriamo l'oggetto
-            mlm_task_candidates.append({
-                "input": (f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} "
-                          f"{PRED_TOKEN} {triple['predicate']} {MASK_TOKEN} {EOT_TOKEN} {MLM_TOKEN}"),
-                "output": triple['object']
-            })
-            # Mascheriamo il predicato
-            mlm_task_candidates.append({
-                "input": (f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} "
-                          f"{MASK_TOKEN} {OBJ_TOKEN} {triple['object']} {EOT_TOKEN} {MLM_TOKEN}"),
-                "output": triple['predicate']
-            })
+            mlm_candidates.append({
+                                      "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {PRED_TOKEN} {triple['predicate']} {MASK_TOKEN} {EOT_TOKEN} {MLM_TOKEN}",
+                                      "output": triple['object']})
+            mlm_candidates.append({
+                                      "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {MASK_TOKEN} {OBJ_TOKEN} {triple['object']} {EOT_TOKEN} {MLM_TOKEN}",
+                                      "output": triple['predicate']})
 
-    print(f"Generati {len(heavy_tasks_examples)} esempi per i task generativi.")
-    print(f"Generati {len(mlm_task_candidates)} candidati per il task MLM.")
+    # --- STAMPA DIAGNOSTICA PULIZIA ---
+    print(
+        "\n" + "=" * 50 + "\n--- Risultati della Fase di Pulizia dei Dati ---\n" + f"Record totali processati: {records_processed}\n" + f"Record scartati: {records_processed - records_kept} ({((records_processed - records_kept) / records_processed) * 100:.2f}%)\n" + f"Record tenuti per il training: {records_kept}\n\nDettaglio motivi di scarto:")
+    for reason, count in rejection_reasons.items(): print(f"- {reason}: {count}")
+    print("=" * 50 + "\n")
 
-    # --- Bilanciamento e Finalizzazione (questa parte rimane invariata) ---
-    print("Bilanciamento del dataset...")
-    random.shuffle(mlm_task_candidates)
+    # --- BILANCIAMENTO A PERCENTUALI FISSE ---
+    print("\n--- Bilanciamento Finale a Percentuali Fisse ---")
 
-    # num_heavy_tasks = len(heavy_tasks_examples)
-    # selected_mlm_examples = mlm_task_candidates[:num_heavy_tasks]
+    random.shuffle(text2rdf_examples);
+    random.shuffle(rdf2text_examples);
+    random.shuffle(continuerdf_examples);
+    random.shuffle(mlm_candidates)
 
-    # Vogliamo che i task generativi siano circa il 75% del totale.
-    # Quindi, il numero di esempi MLM dovrebbe essere circa 1/3 del numero degli altri task.
-    num_heavy_tasks = len(heavy_tasks_examples)
-    num_mlm_to_select = num_heavy_tasks // 3  # Riduciamo drasticamente gli esempi MLM
+    TARGET_PERCENTAGES = {'Text2RDF': 0.25, 'RDF2Text': 0.25, 'CONTINUERDF': 0.30, 'MLM': 0.20}
 
-    selected_mlm_examples = mlm_task_candidates[:num_mlm_to_select]
+    available_examples = {'Text2RDF': text2rdf_examples, 'RDF2Text': rdf2text_examples,
+                          'CONTINUERDF': continuerdf_examples, 'MLM': mlm_candidates}
 
-    print(f"Selezionati {len(selected_mlm_examples)} esempi MLM per il bilanciamento.")
+    min_generative_task_size = min(len(e) for t, e in available_examples.items() if t != 'MLM')
+    if min_generative_task_size == 0:
+        print("ERRORE: Uno dei task generativi non ha prodotto esempi. Impossibile bilanciare.");
+        return
 
-    final_training_data = heavy_tasks_examples + selected_mlm_examples
-    random.shuffle(final_training_data)
+    base_size = int(min_generative_task_size / 0.25)
+    print(
+        f"Task generativo meno frequente ha {min_generative_task_size} esempi. Dimensione target del dataset: ~{base_size}")
 
-    print(f"Dataset finale bilanciato con {len(final_training_data)} esempi totali.")
+    final_data = []
+    for task_name, percentage in TARGET_PERCENTAGES.items():
+        num_to_sample = int(base_size * percentage)
+        candidates = available_examples[task_name]
+        num_to_sample = min(num_to_sample, len(candidates))
+        final_data.extend(candidates[:num_to_sample])
 
-    # --- Salvataggio su file separati ---
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
+    random.shuffle(final_data)
 
+    final_counts = Counter()
+    for item in final_data:
+        if TEXT_TO_RDF_TOKEN in item['input']:
+            final_counts['Text2RDF'] += 1
+        elif RDF_TO_TEXT_TOKEN in item['input']:
+            final_counts['RDF2Text'] += 1
+        elif CONTINUE_RDF_TOKEN in item['input']:
+            final_counts['CONTINUERDF'] += 1
+        elif MLM_TOKEN in item['input']:
+            final_counts['MLM'] += 1
+
+    total_examples = len(final_data)
+    print("\n--- Statistiche Dataset Finale Bilanciato ---")
+    print(f"TOTALE ESEMPI: {total_examples}")
+    tasks_in_order = ['Text2RDF', 'RDF2Text', 'CONTINUERDF', 'MLM']
+    for task in tasks_in_order:
+        count = final_counts[task]
+        percentage = (count / total_examples) * 100 if total_examples > 0 else 0
+        print(f"- Task '{task}': {count} esempi ({percentage:.2f}%)")
+    print("=" * 50 + "\n")
+
+    if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
     source_filepath = os.path.join(OUTPUT_DIR, "train.source")
     target_filepath = os.path.join(OUTPUT_DIR, "train.target")
 
-    print(f"Salvataggio del corpus in '{source_filepath}' e '{target_filepath}'...")
-    with open(source_filepath, 'w', encoding='utf-8') as f_source, \
-            open(target_filepath, 'w', encoding='utf-8') as f_target:
-        for example in tqdm(final_training_data, desc="Scrivendo i file"):
+    print(f"Salvataggio del corpus V3 in '{source_filepath}' e '{target_filepath}'...")
+    with open(source_filepath, 'w', encoding='utf-8') as f_source, open(target_filepath, 'w',
+                                                                        encoding='utf-8') as f_target:
+        for example in tqdm(final_data, desc="Scrivendo i file"):
             f_source.write(example["input"] + "\n")
             f_target.write(example["output"] + "\n")
 
     print("\nPROCESSO COMPLETATO.")
-    print(f"File di training generati con successo nella cartella '{OUTPUT_DIR}'.")
+    print(f"File di training generati con successo nella nuova cartella '{OUTPUT_DIR}'.")
 
 
 if __name__ == "__main__":

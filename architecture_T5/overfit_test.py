@@ -1,65 +1,73 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from tokenizers import Tokenizer
 from tqdm import tqdm
 import os
 
 from dataset_lib import NanoSocratesDataset
-from model import build_transformer
+from model_lib import build_transformer
 from config import get_config
 
 # --- CONFIGURAZIONE DEL TEST ---
-NUM_SAMPLES_FOR_TEST = 30
-NUM_EPOCHS_FOR_TEST = 100
+# Alleniamo su un singolo batch per un numero elevato di step.
+NUM_STEPS_FOR_TEST = 300  # Numero di aggiornamenti dei pesi
 BATCH_SIZE_FOR_TEST = 4
-LEARNING_RATE_FOR_TEST = 5e-4
-LABEL_SMOOTHING_FOR_TEST = 0.0  # DISABILITATO! Cruciale per l'overfitting.
+LEARNING_RATE_FOR_TEST = 3e-4  # Un LR standard va bene per questo test
+LABEL_SMOOTHING_FOR_TEST = 0.0  # DISABILITATO! Cruciale per raggiungere una loss vicina a zero.
 
 
-def get_overfit_ds(config, num_samples: int):
+def get_single_batch(config):
+    """Carica il dataset e restituisce solo il primo batch."""
     tokenizer = Tokenizer.from_file(config['tokenizer_file'])
+
+    # Carica il dataset completo (potremmo ottimizzare leggendo solo le prime righe)
     source_path = os.path.join(config['data_dir'], "train.source")
     target_path = os.path.join(config['data_dir'], "train.target")
     with open(source_path, 'r', encoding='utf-8') as f:
         source_lines = f.readlines()
     with open(target_path, 'r', encoding='utf-8') as f:
         target_lines = f.readlines()
+
     full_raw_ds = [{'source': src.strip(), 'target': tgt.strip()} for src, tgt in zip(source_lines, target_lines)]
-    if len(full_raw_ds) < num_samples:
-        raise ValueError(
-            f"Richiesti {num_samples} esempi per il test, ma il dataset ne contiene solo {len(full_raw_ds)}")
+
+    if len(full_raw_ds) < BATCH_SIZE_FOR_TEST:
+        raise ValueError(f"Il dataset non ha abbastanza esempi per creare un batch di dimensione {BATCH_SIZE_FOR_TEST}")
+
+    # Creiamo un dataset e un dataloader solo per estrarre un batch
     full_dataset = NanoSocratesDataset(full_raw_ds, tokenizer, config['seq_len'])
-    overfit_subset = Subset(full_dataset, range(num_samples))
-    overfit_dataloader = DataLoader(overfit_subset, batch_size=BATCH_SIZE_FOR_TEST, shuffle=True)
-    print(f"Creato un mini-dataset per il test con {len(overfit_subset)} esempi.")
-    return overfit_dataloader, tokenizer
+    temp_dataloader = DataLoader(full_dataset, batch_size=BATCH_SIZE_FOR_TEST, shuffle=False)
+
+    # Estraiamo e restituiamo solo il primo batch
+    single_batch = next(iter(temp_dataloader))
+
+    print(f"Estratto un singolo batch di {BATCH_SIZE_FOR_TEST} esempi per il test di overfitting.")
+    return single_batch, tokenizer
 
 
 def main():
-    print("--- INIZIO SANITY CHECK DI OVERFITTING (con iperparametri aggressivi) ---")
-    print(f"LR={LEARNING_RATE_FOR_TEST}, Label Smoothing={LABEL_SMOOTHING_FOR_TEST}")
-    print("-" * 50)
+    print("--- INIZIO SANITY CHECK: OVERFITTING SU UN SINGOLO BATCH ---")
+    print(f"LR={LEARNING_RATE_FOR_TEST}, Label Smoothing={LABEL_SMOOTHING_FOR_TEST}, Steps={NUM_STEPS_FOR_TEST}")
+    print("-" * 60)
 
     config = get_config()
-    config['num_epochs'] = NUM_EPOCHS_FOR_TEST
-    config['batch_size'] = BATCH_SIZE_FOR_TEST
-    config['preload'] = None
+    config['preload'] = None  # Assicurati che il modello parta da zero
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if not torch.cuda.is_available() and torch.backends.mps.is_available():
         device = "mps"
     print(f"Using device: {device}")
 
-    train_dataloader, tokenizer = get_overfit_ds(config, NUM_SAMPLES_FOR_TEST)
+    # Ottieni il singolo batch di dati e il tokenizer
+    single_batch, tokenizer = get_single_batch(config)
 
     model = build_transformer(
         vocab_size=tokenizer.get_vocab_size(),
         seq_len=config['seq_len'],
         d_model=config['d_model'],
-        N=config['N'],
+        N=config['N'],  # Usiamo la stessa architettura del training reale
         h=config['h'],
-        dropout=config['dropout'],
+        dropout=config['dropout'],  # Il dropout può rimanere, il modello dovrebbe comunque overfittare
         d_ff=config['d_ff']
     ).to(device)
 
@@ -68,37 +76,44 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
                                   label_smoothing=LABEL_SMOOTHING_FOR_TEST).to(device)
 
-    for epoch in range(config['num_epochs']):
+    # Sposta il batch sul device una sola volta
+    encoder_input = single_batch['encoder_input'].to(device)
+    decoder_input = single_batch['decoder_input'].to(device)
+    encoder_mask = single_batch['encoder_mask'].to(device)
+    decoder_mask = single_batch['decoder_mask'].to(device)
+    label = single_batch['label'].to(device)
+
+    # Loop di training per un numero fisso di step
+    pbar = tqdm(range(NUM_STEPS_FOR_TEST), desc="Overfitting a single batch")
+    for step in pbar:
         model.train()
-        batch_iterator = tqdm(train_dataloader, desc=f"Overfitting Epoch {epoch:02d}/{config['num_epochs']}")
-        total_loss = 0
-        for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)
-            decoder_input = batch['decoder_input'].to(device)
-            encoder_mask = batch['encoder_mask'].to(device)
-            decoder_mask = batch['decoder_mask'].to(device)
 
-            encoder_output = model.encode(encoder_input, encoder_mask)
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-            proj_output = model.project(decoder_output)
+        encoder_output = model.encode(encoder_input, encoder_mask)
+        decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+        proj_output = model.project(decoder_output)
 
-            label = batch['label'].to(device)
-            loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
+        loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
 
-            current_lr = optimizer.param_groups[0]['lr']
-            batch_iterator.set_postfix({"loss": f"{loss.item():6.4f}", "lr": f"{current_lr:.2e}"})
-            total_loss += loss.item()
+        pbar.set_postfix({"loss": f"{loss.item():6.4f}"})
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
-        avg_loss = total_loss / len(train_dataloader)
-        print(f"Fine Epoch {epoch:02d} - Average Loss: {avg_loss:.4f}")
+    final_loss = loss.item()
+    print(f"\nFine del test. Loss finale: {final_loss:.6f}")
 
-    print("-" * 50)
+    print("-" * 60)
     print("--- SANITY CHECK COMPLETATO ---")
+
+    # Controlla se il test è passato
+    if final_loss < 0.01:
+        print("✅ TEST SUPERATO: La loss è scesa a un valore vicino allo zero.")
+    else:
+        print(
+            "❌ TEST FALLITO: La loss non è scesa a sufficienza. Potrebbe esserci un problema nel modello o nel training loop.")
+
 
 if __name__ == "__main__":
     main()

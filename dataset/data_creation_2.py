@@ -12,6 +12,7 @@ seguendo le best practice indicate dalla traccia:
 import json
 from SPARQLWrapper import SPARQLWrapper, JSON
 from collections import defaultdict
+import time
 
 PREFIX_MAP = {
     "http://dbpedia.org/resource/": "dbr:",
@@ -20,18 +21,15 @@ PREFIX_MAP = {
     "http://www.w3.org/2000/01/rdf-schema#": "rdfs:"
 }
 
-# La tua "whitelist" di predicati, definita qui per chiarezza.
-# Questa è una pratica eccellente per la curatela del dataset.
 WHITELISTED_PREDICATES = [
     "dbo:director", "dbo:writer", "dbo:starring", "dbo:producer",
     "dbo:musicComposer", "dbo:country", "dbo:language", "dbo:releaseDate",
     "dbo:distributor", "dbo:cinematography", "dbo:editing", "dbo:imdbId",
-    "rdf:type", "rdfs:label"  # Aggiungiamo anche questi che sono utili
+    "rdf:type", "rdfs:label"
 ]
 
 
 def shorten_uri(uri):
-    """Converte un URI completo nella sua forma compatta (QName)."""
     if not isinstance(uri, str):
         return uri
     for base, prefix in PREFIX_MAP.items():
@@ -40,109 +38,96 @@ def shorten_uri(uri):
     return uri
 
 
-def fetch_and_process_film_data(endpoint_url, limit=100):
+def fetch_and_process_film_data(endpoint_url, total_limit=10000, page_size=1000):
     """
-    Esegue una singola query per ottenere tutti i dati dei film e li processa.
-    Questo approccio è drasticamente più efficiente e rispetta tutti gli hint.
+    Esegue query paginate per ottenere i dati dei film e li processa.
+    Questo approccio evita i limiti dell'endpoint SPARQL.
     """
     sparql = SPARQLWrapper(endpoint_url)
-
-    # Convertiamo la nostra lista di predicati in una stringa per la query SPARQL
     predicate_filter_string = ", ".join(WHITELISTED_PREDICATES)
-
-    query = f"""
-        PREFIX dbo: <http://dbpedia.org/ontology/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-        SELECT ?film ?filmLabel ?abstract ?p ?o
-        WHERE {{
-            {{
-                SELECT DISTINCT ?film WHERE {{ ?film a dbo:Film . }} LIMIT {limit}
-            }}
-
-            ?film ?p ?o .
-
-            # Filtro sui predicati per mantenere il dataset pulito e focalizzato
-            FILTER(?p IN ({predicate_filter_string}))
-
-            OPTIONAL {{ 
-                ?film rdfs:label ?filmLabel .
-                FILTER(LANG(?filmLabel) = 'en')
-            }}
-
-            OPTIONAL {{
-                ?film dbo:abstract ?abstract .
-                FILTER(LANG(?abstract) = 'en')
-            }}
-        }}
-    """
-
-    sparql.setQuery(query)
-    sparql.setReturnFormat(JSON)
-
-    print(f"Esecuzione della query unica per {limit} film. Potrebbe richiedere un po' di tempo...")
-
-    try:
-        results = sparql.query().convert()["results"]["bindings"]
-    except Exception as e:
-        print(f"Errore critico durante la query SPARQL: {e}")
-        return []
-
-    print(f"Query completata. Ricevute {len(results)} righe. Inizio processamento...")
 
     films_data = defaultdict(lambda: {"triples": set(), "abstract": None, "title": None})
 
-    for res in results:
-        film_uri = res['film']['value']
+    # Esegui query paginate
+    for offset in range(0, total_limit, page_size):
+        print(f"--- Esecuzione query per la pagina: OFFSET {offset}, LIMIT {page_size} ---")
 
-        if not films_data[film_uri]['title'] and 'filmLabel' in res:
-            films_data[film_uri]['title'] = res['filmLabel']['value']
+        query = f"""
+            PREFIX dbo: <http://dbpedia.org/ontology/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
-        if not films_data[film_uri]['abstract'] and 'abstract' in res:
-            films_data[film_uri]['abstract'] = res['abstract']['value'].split('\n')[0].strip()
+            SELECT ?film ?filmLabel ?abstract ?p ?o
+            WHERE {{
+                {{
+                    SELECT DISTINCT ?film WHERE {{ ?film a dbo:Film . }} ORDER BY ?film LIMIT {page_size} OFFSET {offset}
+                }}
 
-        # Logica di filtraggio per le triple "rdf:type"
-        predicate_val = res['p']['value']
-        object_val = res['o']['value']
+                ?film ?p ?o .
+                FILTER(?p IN ({predicate_filter_string}))
+                OPTIONAL {{ ?film rdfs:label ?filmLabel . FILTER(LANG(?filmLabel) = 'en') }}
+                OPTIONAL {{ ?film dbo:abstract ?abstract . FILTER(LANG(?abstract) = 'en') }}
+            }}
+        """
 
-        # Se il predicato è "rdf:type", controlliamo l'oggetto della tripla.
-        if predicate_val == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type":
-            # Teniamo la tripla solo se l'oggetto appartiene all'ontologia di DBpedia (dbo:)
-            # In questo modo scartiamo i tipi provenienti da YAGO, Schema.org, ecc.
-            if not object_val.startswith("http://dbpedia.org/ontology/"):
-                continue
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
 
-        # Aggiungiamo la tripla (usando un set per evitare duplicati)
-        subject_short = shorten_uri(film_uri)
-        predicate_short = shorten_uri(predicate_val)
-        object_short = shorten_uri(object_val)
-        films_data[film_uri]['triples'].add((subject_short, predicate_short, object_short))
+        try:
+            results = sparql.query().convert()["results"]["bindings"]
+            print(f"Query completata. Ricevute {len(results)} righe per questa pagina.")
+            if not results:
+                print("Nessun altro risultato da DBpedia. Interruzione.")
+                break
+        except Exception as e:
+            print(f"Errore durante la query SPARQL per l'offset {offset}: {e}")
+            time.sleep(5)  # Attendi 5 secondi prima di riprovare
+            continue
 
-    # Fase di pulizia finale e formattazione (questa parte rimane invariata)
+        # Processa i risultati della pagina corrente
+        for res in results:
+            film_uri = res['film']['value']
+            if not films_data[film_uri]['title'] and 'filmLabel' in res:
+                films_data[film_uri]['title'] = res['filmLabel']['value']
+            if not films_data[film_uri]['abstract'] and 'abstract' in res:
+                films_data[film_uri]['abstract'] = res['abstract']['value'].split('\n')[0].strip()
+
+            predicate_val = res['p']['value']
+            object_val = res['o']['value']
+            if predicate_val == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type":
+                if not object_val.startswith("http://dbpedia.org/ontology/"):
+                    continue
+
+            films_data[film_uri]['triples'].add((
+                shorten_uri(film_uri),
+                shorten_uri(predicate_val),
+                shorten_uri(object_val)
+            ))
+
+        time.sleep(1)  # Pausa di 1 secondo tra le query per essere cortesi con l'endpoint
+
+    # Fase di pulizia finale e formattazione
+    print("\nProcessamento di tutti i dati raccolti...")
     curated_data = []
     for uri, data in films_data.items():
         if not data['abstract'] or not data['triples']:
             continue
-
         title = data['title'] if data['title'] else uri.split('/')[-1].replace('_', ' ')
-
         curated_data.append({
             "title": title,
             "subject_uri": shorten_uri(uri),
             "abstract": data['abstract'],
             "triples": [{"subject": s, "predicate": p, "object": o} for s, p, o in sorted(list(data['triples']))]
         })
-
     return curated_data
 
 
 def main():
     DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-    FILM_LIMIT = 1000
+    FILM_LIMIT = 100
     OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}_final.json"
 
-    final_data = fetch_and_process_film_data(DBPEDIA_SPARQL_ENDPOINT, FILM_LIMIT)
+    final_data = fetch_and_process_film_data(DBPEDIA_SPARQL_ENDPOINT, total_limit=FILM_LIMIT)
 
     if not final_data:
         print("Nessun dato recuperato. Uscita.")

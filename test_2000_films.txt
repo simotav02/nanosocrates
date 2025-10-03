@@ -1,0 +1,515 @@
+2000 film
+
+(venv) simonetavilla@MacBook-Pro-di-SimoTav architecture_T5 % python train_beam.py
+--- INIZIO TRAINING UNIFICATO ---
+Using device: mps
+Modello Transformer (con T5 Relative Bias V2) costruito con 74,571,809 parametri.
+Processing Epoch 00: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [26:07<00:00,  5.91s/it, loss=9.203, lr=1.99e-05]
+Processing Epoch 01: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:10<00:00,  6.83s/it, loss=6.060, lr=3.99e-05]
+Processing Epoch 02: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [32:41<00:00,  7.40s/it, loss=3.480, lr=5.99e-05]
+Processing Epoch 03: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [34:58<00:00,  7.92s/it, loss=4.797, lr=7.99e-05]
+Processing Epoch 04: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [31:29<00:00,  7.13s/it, loss=2.981, lr=9.99e-05]
+
+--- Running INTERMEDIATE validation for Epoch 04 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [03:45<00:00,  1.05it/s]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0228
+ROUGE-L: 0.1812
+METEOR: 0.1695
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.0200
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_for_Days_film) <PRED> dbo:director <OBJ> dbr:editing._to_to_Certain_Tale <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT><SOT><SOT> <SUBJ> dbr:7_a_the_film) <PRED> dbo:starring <OBJ> dbr:Michael_Hours_of_the_Days_the_the_Men_of_for_Years <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:director'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:99_Days_Nights_the_to_the_of_of_the_to_of_the_the_to_<OBJ> dbr:3_<EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:Joseph_and_a_ '
+
+================================================================================
+
+Processing Epoch 05: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [28:57<00:00,  6.56s/it, loss=2.493, lr=9.78e-05]
+Processing Epoch 06: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:29<00:00,  6.90s/it, loss=2.642, lr=9.56e-05]
+Processing Epoch 07: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [35:00<00:00,  7.93s/it, loss=5.560, lr=9.33e-05]
+Processing Epoch 08: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [31:52<00:00,  7.22s/it, loss=2.483, lr=9.11e-05]
+Processing Epoch 09: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [28:52<00:00,  6.54s/it, loss=4.411, lr=8.89e-05]
+
+--- Running INTERMEDIATE validation for Epoch 09 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [03:54<00:00,  1.01it/s]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0268
+ROUGE-L: 0.1762
+METEOR: 0.1615
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.1200
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_of_Summer <PRED> dbo:director <OBJ> dbr:Kim_Bros._Trilogy <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_Better_Case_of_Nation_of_of_of_of_of_Boy_Woman/Devil <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbr:John_Pictures'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:3_You_(film) <PRED> dbo:starring <OBJ> dbr:Chris_Mendes <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:producer'
+
+================================================================================
+
+Processing Epoch 10:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(18913) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(18917) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 10: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [32:00<00:00,  7.25s/it, loss=3.334, lr=8.67e-05]
+Processing Epoch 11:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(20452) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(20453) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 11: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:55<00:00,  7.00s/it, loss=2.651, lr=8.45e-05]
+Processing Epoch 12:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(21858) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(21859) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 12: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:58<00:00,  7.01s/it, loss=2.170, lr=8.22e-05]
+Processing Epoch 13:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(23077) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(23078) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 13: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [29:25<00:00,  6.66s/it, loss=2.244, lr=8.00e-05]
+Processing Epoch 14:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(24339) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(24340) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 14: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:29<00:00,  6.90s/it, loss=2.098, lr=7.78e-05]
+
+--- Running INTERMEDIATE validation for Epoch 14 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [03:47<00:00,  1.04it/s]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0334
+ROUGE-L: 0.1763
+METEOR: 0.1744
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.0800
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT><SOT> <SUBJ> dbr:'71_(film) <PRED> dbo:director <OBJ> dbr:Lucio_Pictures <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:1nd_to_Hunting <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:director'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:36_Underground_(film) <PRED> dbo:starring <OBJ> dbr:Tim_Fishburne <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:producer'
+
+================================================================================
+
+Processing Epoch 15:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(25773) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(25774) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 15: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:16<00:00,  6.86s/it, loss=2.280, lr=7.56e-05]
+Processing Epoch 16:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(27324) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(27325) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 16: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:48<00:00,  6.98s/it, loss=4.242, lr=7.33e-05]
+Processing Epoch 17:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(28637) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(28638) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 17: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:41<00:00,  6.95s/it, loss=2.968, lr=7.11e-05]
+Processing Epoch 18:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(30056) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(30059) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 18: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:19<00:00,  6.86s/it, loss=1.712, lr=6.89e-05]
+Processing Epoch 19:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(31500) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(31504) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 19: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:26<00:00,  6.89s/it, loss=2.706, lr=6.67e-05]
+
+--- Running INTERMEDIATE validation for Epoch 19 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [03:51<00:00,  1.02it/s]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0300
+ROUGE-L: 0.1665
+METEOR: 0.1728
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.1200
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_Brighter_Summer_Day <PRED> dbo:director <OBJ> dbr:A_Carlos_Bernsen <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT><SOT> <SUBJ> dbr:360_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:starring'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:3B._The_Passion:_The_Movie <PRED> dbo:starring <OBJ> dbr:Victor_Bros._Leeds <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:editing'
+
+================================================================================
+
+Processing Epoch 20:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(32962) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(32963) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 20: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:52<00:00,  6.99s/it, loss=3.122, lr=6.45e-05]
+Processing Epoch 21:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(34431) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(34433) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 21: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:39<00:00,  6.94s/it, loss=1.767, lr=6.22e-05]
+Processing Epoch 22:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(35954) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(35955) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 22: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:32<00:00,  6.91s/it, loss=2.428, lr=6.00e-05]
+Processing Epoch 23:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(37352) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(37354) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 23: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [31:03<00:00,  7.03s/it, loss=2.554, lr=5.78e-05]
+Processing Epoch 24:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(38802) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(38803) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 24: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:14<00:00,  6.85s/it, loss=1.656, lr=5.56e-05]
+
+--- Running INTERMEDIATE validation for Epoch 24 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [03:49<00:00,  1.03it/s]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0320
+ROUGE-L: 0.1750
+METEOR: 0.1755
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.1400
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_Boy_from_Calabria <PRED> dbo:director <OBJ> dbr:Lucio_Cook <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:3_Minutes <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:cinematography'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:1000_Verliefd <PRED> dbo:starring <OBJ> dbr:Michael_Kapoor <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:producer'
+
+================================================================================
+
+Processing Epoch 25:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(40207) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(40208) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 25: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:35<00:00,  6.93s/it, loss=2.610, lr=5.33e-05]
+Processing Epoch 26:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(41550) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(41552) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 26: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:22<00:00,  6.88s/it, loss=2.754, lr=5.11e-05]
+Processing Epoch 27:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(42962) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(42963) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 27: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:34<00:00,  6.92s/it, loss=2.199, lr=4.89e-05]
+Processing Epoch 28:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(44472) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(44473) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 28: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:51<00:00,  6.99s/it, loss=1.727, lr=4.67e-05]
+Processing Epoch 29:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(45866) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(45867) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 29: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [30:45<00:00,  6.96s/it, loss=1.978, lr=4.45e-05]
+
+--- Running INTERMEDIATE validation for Epoch 29 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [04:13<00:00,  1.07s/it]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0273
+ROUGE-L: 0.1575
+METEOR: 0.1704
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.1400
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT><SOT> <SUBJ> dbr:A_(1998_Kannada_film) <PRED> dbo:cinematography <OBJ> dbr:Johan_Kurosawa <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:3_Circus <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:distributor'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:'Tis_She's_a_Whore_(film) <PRED> dbo:starring <OBJ> dbr:Draya_Oberon <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:musicComposer'
+
+================================================================================
+
+Processing Epoch 30:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(47452) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(47453) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 30: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [35:33<00:00,  8.05s/it, loss=1.819, lr=4.22e-05]
+Processing Epoch 31:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(49151) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(49157) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 31: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [46:58<00:00, 10.63s/it, loss=1.613, lr=4.00e-05]
+Processing Epoch 32:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(50758) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(50760) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 32: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [36:33<00:00,  8.28s/it, loss=1.796, lr=3.78e-05]
+Processing Epoch 33:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(52568) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(52569) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 33: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [28:15<00:00,  6.40s/it, loss=1.855, lr=3.56e-05]
+Processing Epoch 34:   0%|                                                                                                                              | 0/265 [00:00<?, ?it/s]Python(53763) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Python(53764) MallocStackLogging: can't turn off malloc stack logging because it was not enabled.
+Processing Epoch 34: 100%|███████████████████████████████████████████████████████████████████████████████████████████| 265/265 [32:43<00:00,  7.41s/it, loss=1.796, lr=3.33e-05]
+
+--- Running INTERMEDIATE validation for Epoch 34 (fast with Sampling) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+Validating (Sampling): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 236/236 [04:19<00:00,  1.10s/it]
+
+================================================================================
+--- RDF2Text Metrics ---
+BLEU: 0.0278
+ROUGE-L: 0.1722
+METEOR: 0.1743
+
+--- Text2RDF / RDF Completion 2 Metrics ---
+Precision: 0.0081, Recall: 0.0024, F1-Score: 0.0036
+
+--- RDF Completion 1 (MLM) Metrics ---
+Accuracy: 0.1600
+
+================================================================================
+--- Esempi Qualitativi ---
+
+----- Esempio 1 -----
+INPUT      : A Case of Murder is a 2004 action/crime/thriller film which had its release in South Africa on 2 July 2004. It was based on a true story of a hideous murder, where the victim's body was disposed of in a suitcase. The film was dedicated to the memory of veteran actor Ramalao Makhene, who died shortly after shooting was completed. <Text2RDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:A_Case_of_Murder <PRED> dbo:country <OBJ> dbr:South_Africa <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:A_Brighter_Summer_Day <PRED> dbo:cinematography <OBJ> dbr:Edward_Fulci <EOT>'
+
+----- Esempio 2 -----
+INPUT      : <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:3_Deewarein <PRED> rdf:type <OBJ> dbo:Work <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:3,_10_a_Girl_and_a_Bike <PRED> rdf:type <OBJ> dbo:Work <EOT>'
+
+----- Esempio 3 -----
+INPUT      : <SOT> <SUBJ> dbr:21_Grams <MASK> <OBJ> dbr:Naomi_Watts <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:director'
+
+----- Esempio 4 -----
+INPUT      : <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Andrzej_Mellin <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Jadwiga_Jankowska-Cieslak <EOT> <CONTINUERDF>
+RIFERIMENTO: <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Kama_Kowalewska <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Peter_Steen <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Rafal_Zimowski <EOT> <SOT> <SUBJ> dbr:300_Miles_to_Heaven <PRED> dbo:starring <OBJ> dbr:Wojciech_Klata <EOT>
+PREDIZIONE : '<SOT> <SUBJ> dbr:002_Operazione_Luna <PRED> dbo:starring <OBJ> dbr:Yayan_Metz <EOT>'
+
+----- Esempio 5 -----
+INPUT      : <SOT> <SUBJ> dbr:'Neath_Brooklyn_Bridge <MASK> <OBJ> dbr:Huntz_Hall <EOT> <MLM>
+RIFERIMENTO: dbo:starring
+PREDIZIONE : 'dbo:writer'
+
+================================================================================
+
+
+
+
+def get_config():
+    """
+    Configurazione per un singolo ciclo di training multi-task unificato.
+    Questo approccio è più semplice e robusto del pre-training/fine-tuning separato.
+    """
+    return {
+        # --- Parametri del Modello ---
+        "d_model": 512,
+        "N": 6,  # Numero di blocchi Encoder/Decoder (standard)
+        "h": 8,  # Numero di teste di attenzione
+        "d_ff": 2048,  # Dimensione del layer FeedForward
+        "dropout": 0.1,
+        "seq_len": 512,
+
+        # --- Parametri di Training ---
+        "batch_size": 8,
+        "num_epochs": 50,  # Un numero ragionevole di epoche per un dataset più grande
+        "lr": 1e-4,  # Un learning rate più stabile per un training from-scratch
+
+        # --- Percorsi e Nomi File ---
+        # NOTA: Assicurati che questa cartella contenga i file train.source/target
+        # generati dal nuovo dataset pulito e più grande.
+        "data_dir": "../dataset/training_data_cleaned",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer.json",
+        "model_folder": "weights_test_2000_films",
+        "model_basename": "nanosocrates_test_2000_",
+
+        # --- Checkpoint e Ripresa del Training ---
+        # Imposta un percorso a un modello .pt per riprendere il training (es. "weights_unified_training/nanosocrates_unified_09.pt")
+        "preload": None,
+
+        # --- Validazione e Logging ---
+        "validate_every_n_epochs": 5,
+        "num_validation_examples": -1,  # -1 per validare sull'intero validation set
+        "experiment_name": "runs/nanosocrates_test_2000_fims_run"
+    }

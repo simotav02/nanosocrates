@@ -6,7 +6,7 @@ import re
 from collections import defaultdict, Counter
 
 # --- CONFIGURAZIONE ---
-INPUT_JSON_FILE = "film_dataset_3000_final.json"  # Assicurati che sia il nome corretto del tuo file JSON grande
+INPUT_JSON_FILE = "film_dataset_2000_cleaned.json"
 OUTPUT_DIR = "training_data_cleaned"
 
 # Token speciali

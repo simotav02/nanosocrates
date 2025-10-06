@@ -38,8 +38,8 @@ def get_finetune_config():
     config.update({
         "num_epochs": 30,         # Meno epoche per la fase di adattamento
         "lr": 3e-5,               # <-- LEARNING RATE CRUCIALE: molto più basso!
-        "validate_every_n_epochs": 5,
-        "data_dir": "dataset/unified_multitask_data", # <-- Usa i dati dei task finali
+        "validate_every_n_epochs": 1,
+        "data_dir": "../dataset/training_data_cleaned", # <-- Usa i dati dei task finali
         "model_folder": "weights_finetuned_t5",
         "model_basename": "nanosocrates_t5_finetuned_",
         "experiment_name": "runs/nanosocrates_finetune_t5",

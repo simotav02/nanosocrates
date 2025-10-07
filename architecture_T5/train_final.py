@@ -17,7 +17,7 @@ from collections import defaultdict, Counter
 from torch.utils.tensorboard import SummaryWriter
 
 from model_lib import build_transformer
-from config import get_pretrain_config, get_finetune_config
+from config_pretrain import get_pretrain_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 

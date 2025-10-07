@@ -36,8 +36,8 @@ def get_finetune_config():
     """Configurazione per la fase di FINE-TUNING sui 4 task specifici."""
     config = get_base_config()
     config.update({
-        "num_epochs": 30,         # Meno epoche per la fase di adattamento
-        "lr": 3e-5,               # <-- LEARNING RATE CRUCIALE: molto più basso!
+        "num_epochs": 80,         # Meno epoche per la fase di adattamento
+        "lr": 5e-5,               # <-- LEARNING RATE CRUCIALE: molto più basso!
         "validate_every_n_epochs": 1,
         "data_dir": "../dataset/training_data_cleaned", # <-- Usa i dati dei task finali
         "model_folder": "weights_finetuned_t5",
@@ -45,7 +45,7 @@ def get_finetune_config():
         "experiment_name": "runs/nanosocrates_finetune_t5",
         # --- PUNTO CHIAVE: Carica i pesi del miglior modello pre-addestrato ---
         # MODIFICA QUESTO NOME FILE con il checkpoint migliore ottenuto dal pre-training!
-        "preload": "weights_pretrain_t5/nanosocrates_t5_pretrained_49.pt",
+        "preload": "weights_finetuned_t5/nanosocrates_t5_finetuned_29.pt",
         "loss_label_smoothing": 0.1, # Usa il label smoothing per il fine-tuning
     })
     return config

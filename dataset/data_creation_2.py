@@ -11,7 +11,7 @@ DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
 # NOTA: Aumentato drasticamente il limite. 200 film sono troppo pochi.
 # Inizia con 2000-5000 per avere un dataset minimamente decente.
 # Il processo richiederà più tempo, ma è il passo più importante per migliorare i risultati.
-FILM_LIMIT = 2000
+FILM_LIMIT = 5000
 PAGE_SIZE = 500  # Scarica i dati in blocchi per non sovraccaricare l'endpoint
 OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}_cleaned.json"
 

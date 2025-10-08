@@ -1,18 +1,12 @@
-# data_creation_2.py
-
 import json
 from SPARQLWrapper import SPARQLWrapper, JSON
 from collections import defaultdict
 import time
 from tqdm import tqdm
 
-# --- CONFIGURAZIONE ---
 DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-# NOTA: Aumentato drasticamente il limite. 200 film sono troppo pochi.
-# Inizia con 2000-5000 per avere un dataset minimamente decente.
-# Il processo richiederà più tempo, ma è il passo più importante per migliorare i risultati.
 FILM_LIMIT = 5000
-PAGE_SIZE = 500  # Scarica i dati in blocchi per non sovraccaricare l'endpoint
+PAGE_SIZE = 500
 OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}_cleaned.json"
 
 PREFIX_MAP = {
@@ -43,7 +37,6 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
     sparql = SPARQLWrapper(endpoint_url)
     predicate_filter_string = ", ".join(WHITELISTED_PREDICATES)
 
-    # Usiamo defaultdict per raggruppare facilmente i dati per URI del film
     films_data = defaultdict(lambda: {"triples": set(), "abstract": None, "title": None})
     num_pages = (total_limit + page_size - 1) // page_size
 
@@ -51,11 +44,7 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
         offset = i * page_size
         print(f"--- Esecuzione query pagina {i + 1}/{num_pages} (OFFSET {offset}, LIMIT {page_size}) ---")
 
-        # --- MODIFICA CHIAVE: QUERY SPARQL POTENZIATA ---
-        # 1. Recupera una "pagina" di film distinti in una subquery.
-        # 2. Per ogni film, recupera le triple, l'abstract e il titolo.
-        # 3. FILTRO LINGUA CRUCIALE: Assicura che tutti i dati testuali (titolo, abstract, e oggetti letterali delle triple)
-        #    siano in inglese ('en') o non abbiano un tag di lingua (es. date, numeri).
+
         query = f"""
             PREFIX dbo: <http://dbpedia.org/ontology/>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -98,7 +87,6 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
             time.sleep(10)
             continue
 
-        # Processa i risultati della pagina corrente
         for res in tqdm(results, desc=f"Processando risultati pagina {i + 1}"):
             film_uri = res['film']['value']
 
@@ -106,13 +94,11 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
                 films_data[film_uri]['title'] = res['filmLabel']['value']
 
             if not films_data[film_uri]['abstract'] and 'abstract' in res:
-                # Prendi solo il primo paragrafo dell'abstract
                 films_data[film_uri]['abstract'] = res['abstract']['value'].split('\n')[0].strip()
 
             predicate_val = res['p']['value']
             object_val = res['o']['value']
 
-            # Evita di aggiungere triple non informative come rdf:type owl:Thing
             if predicate_val == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type":
                 if not object_val.startswith("http://dbpedia.org/ontology/"):
                     continue
@@ -123,7 +109,7 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
                 shorten_uri(object_val)
             ))
 
-        time.sleep(1)  # Pausa di cortesia tra le query
+        time.sleep(1)
 
     print("\n--- Fase di pulizia e formattazione finale ---")
     curated_data = []
@@ -132,14 +118,12 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
         if not data['abstract'] or not data['triples']:
             continue
 
-        # Usa un titolo di fallback se la label in inglese non è stata trovata
         title = data['title'] if data['title'] else uri.split('/')[-1].replace('_', ' ')
 
         curated_data.append({
             "title": title,
             "subject_uri": shorten_uri(uri),
             "abstract": data['abstract'],
-            # Converti il set di tuple in una lista di dizionari e ordinala per leggibilità
             "triples": [{"subject": s, "predicate": p, "object": o} for s, p, o in sorted(list(data['triples']))]
         })
 

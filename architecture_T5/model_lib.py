@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import math
 from einops import rearrange
 
-# --- MODULO 1: Codice per i T5 Relative Positional Bias ---
 
 class T5RelativePositionBias(nn.Module):
     def __init__(self, scale, causal=False, num_buckets=32, max_distance=128, heads=8):
@@ -49,7 +48,6 @@ class T5RelativePositionBias(nn.Module):
         return qk_dots + bias
 
 
-# --- MODULO 2: Componenti Base del Transformer ---
 
 class T5LayerNorm(nn.Module):
     def __init__(self, dim):
@@ -73,7 +71,6 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# --- L'attention ora è un singolo modulo flessibile ---
 class T5Attention(nn.Module):
     def __init__(self, d_model, heads, causal=False, use_relative_bias=True, dropout=0.1, dim_head=64):
         super().__init__()
@@ -113,13 +110,10 @@ class T5Attention(nn.Module):
             causal_mask = torch.ones((i, j), dtype=torch.bool, device=x.device).triu(j - i + 1)
             sim = sim.masked_fill(causal_mask, mask_value)
 
-        # La maschera di padding (True dove c'è PAD) viene espansa per il broadcasting
         if mask is not None:
-            # mask shape: (b, i) -> (b, 1, 1, i)
             sim = sim.masked_fill(mask.unsqueeze(1).unsqueeze(-1), mask_value)
 
         if context_mask is not None:
-            # context_mask shape: (b, j) -> (b, 1, j, 1) -> broadcast su i
             sim = sim.masked_fill(context_mask.unsqueeze(1).unsqueeze(2), mask_value)
 
 
@@ -132,7 +126,6 @@ class T5Attention(nn.Module):
         return self.to_out(out)
 
 
-# --- MODULO 3: Blocchi Encoder e Decoder Custom ---
 
 class EncoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout):
@@ -153,9 +146,7 @@ class DecoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout):
         super().__init__()
         dim_head = d_model // heads
-        # Self-Attention nel decoder: è CAUSALE e usa il BIAS RELATIVO
         self.self_attn = T5Attention(d_model, heads, causal=True, use_relative_bias=True, dropout=dropout, dim_head=dim_head)
-        # Cross-Attention: NON è causale e NON usa il BIAS RELATIVO
         self.cross_attn = T5Attention(d_model, heads, causal=False, use_relative_bias=False, dropout=dropout, dim_head=dim_head)
         self.ffn = FeedForward(d_model, d_ff, dropout=dropout)
         self.norm1 = T5LayerNorm(d_model)
@@ -164,15 +155,11 @@ class DecoderBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, context, src_mask, tgt_mask):
-        # Self-attention con maschera target (padding + causale)
         x = x + self.dropout(self.self_attn(self.norm1(x), mask=tgt_mask))
-        # Cross-attention con maschera sorgente (solo padding)
         x = x + self.dropout(self.cross_attn(self.norm2(x), context=context, context_mask=src_mask))
         x = x + self.dropout(self.ffn(self.norm3(x)))
         return x
 
-
-# --- MODULO 4: Modello Transformer Completo (invariato) ---
 
 class InputEmbeddings(nn.Module):
     def __init__(self, d_model: int, vocab_size: int) -> None:

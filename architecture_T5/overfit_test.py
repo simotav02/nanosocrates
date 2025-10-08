@@ -9,16 +9,14 @@ from dataset_lib import NanoSocratesDataset
 from model_lib import build_transformer
 from config import get_config
 
-# --- CONFIGURAZIONE DEL TEST ---
-# Alleniamo su un singolo batch per un numero elevato di step.
-NUM_STEPS_FOR_TEST = 300  # Numero di aggiornamenti dei pesi
+
+NUM_STEPS_FOR_TEST = 300
 BATCH_SIZE_FOR_TEST = 4
-LEARNING_RATE_FOR_TEST = 3e-4  # Un LR standard va bene per questo test
-LABEL_SMOOTHING_FOR_TEST = 0.0  # DISABILITATO! Cruciale per raggiungere una loss vicina a zero.
+LEARNING_RATE_FOR_TEST = 3e-4
+LABEL_SMOOTHING_FOR_TEST = 0.0  .
 
 
 def get_single_batch(config):
-    """Carica il dataset e restituisce solo il primo batch."""
     tokenizer = Tokenizer.from_file(config['tokenizer_file'])
 
     # Carica il dataset completo (potremmo ottimizzare leggendo solo le prime righe)
@@ -34,11 +32,9 @@ def get_single_batch(config):
     if len(full_raw_ds) < BATCH_SIZE_FOR_TEST:
         raise ValueError(f"Il dataset non ha abbastanza esempi per creare un batch di dimensione {BATCH_SIZE_FOR_TEST}")
 
-    # Creiamo un dataset e un dataloader solo per estrarre un batch
     full_dataset = NanoSocratesDataset(full_raw_ds, tokenizer, config['seq_len'])
     temp_dataloader = DataLoader(full_dataset, batch_size=BATCH_SIZE_FOR_TEST, shuffle=False)
 
-    # Estraiamo e restituiamo solo il primo batch
     single_batch = next(iter(temp_dataloader))
 
     print(f"Estratto un singolo batch di {BATCH_SIZE_FOR_TEST} esempi per il test di overfitting.")
@@ -51,23 +47,22 @@ def main():
     print("-" * 60)
 
     config = get_config()
-    config['preload'] = None  # Assicurati che il modello parta da zero
+    config['preload'] = None
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if not torch.cuda.is_available() and torch.backends.mps.is_available():
         device = "mps"
     print(f"Using device: {device}")
 
-    # Ottieni il singolo batch di dati e il tokenizer
     single_batch, tokenizer = get_single_batch(config)
 
     model = build_transformer(
         vocab_size=tokenizer.get_vocab_size(),
         seq_len=config['seq_len'],
         d_model=config['d_model'],
-        N=config['N'],  # Usiamo la stessa architettura del training reale
+        N=config['N'],
         h=config['h'],
-        dropout=config['dropout'],  # Il dropout può rimanere, il modello dovrebbe comunque overfittare
+        dropout=config['dropout'],
         d_ff=config['d_ff']
     ).to(device)
 
@@ -76,14 +71,12 @@ def main():
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
                                   label_smoothing=LABEL_SMOOTHING_FOR_TEST).to(device)
 
-    # Sposta il batch sul device una sola volta
     encoder_input = single_batch['encoder_input'].to(device)
     decoder_input = single_batch['decoder_input'].to(device)
     encoder_mask = single_batch['encoder_mask'].to(device)
     decoder_mask = single_batch['decoder_mask'].to(device)
     label = single_batch['label'].to(device)
 
-    # Loop di training per un numero fisso di step
     pbar = tqdm(range(NUM_STEPS_FOR_TEST), desc="Overfitting a single batch")
     for step in pbar:
         model.train()
@@ -107,7 +100,6 @@ def main():
     print("-" * 60)
     print("--- SANITY CHECK COMPLETATO ---")
 
-    # Controlla se il test è passato
     if final_loss < 0.01:
         print("✅ TEST SUPERATO: La loss è scesa a un valore vicino allo zero.")
     else:

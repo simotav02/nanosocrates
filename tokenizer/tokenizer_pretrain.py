@@ -1,5 +1,3 @@
-# tokenizer_lib.py (Versione Corretta per la libreria 'tokenizers' aggiornata)
-
 import re
 import os
 from tokenizers import Tokenizer
@@ -9,14 +7,12 @@ from tokenizers.pre_tokenizers import Sequence, Split, ByteLevel
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
 from tqdm import tqdm
 
-# --- CONFIGURAZIONE ---
 VOCAB_SIZE = 32000
 TRAINING_DATA_DIR = "../dataset/training_data_cleaned"
 SOURCE_FILE = os.path.join(TRAINING_DATA_DIR, "train.source")
 TARGET_FILE = os.path.join(TRAINING_DATA_DIR, "train.target")
 TOKENIZER_FILE = "film_corpus_bpe_tokenizer_t5.json"
 
-# --- DEFINIZIONE DEI TOKEN SPECIALI ---
 PAD_TOKEN = "<PAD>"
 UNK_TOKEN = "<UNK>"
 SOT_TOKEN = "<SOT>"
@@ -36,18 +32,15 @@ SPECIAL_TOKENS = [
     TEXT_TO_RDF_TOKEN, RDF_TO_TEXT_TOKEN, CONTINUE_RDF_TOKEN, MLM_TOKEN, MASK_TOKEN
 ] + EXTRA_ID_TOKENS
 
-# --- SCRIPT DI ADDESTRAMENTO DEL TOKENIZER ---
 
 print("1/5 - Inizializzazione di un nuovo tokenizer BPE...")
 tokenizer = Tokenizer(BPE(unk_token=UNK_TOKEN))
 
 print("2/5 - Configurazione del pre-tokenizer e del decoder...")
 
-# --- MODIFICA CHIAVE: Rimozione di re.compile() ---
-# Costruiamo la stringa della regex per i token speciali
+
 special_tokens_pattern = f"({'|'.join(re.escape(token) for token in SPECIAL_TOKENS)})"
 
-# Passiamo la stringa direttamente a Split, senza compilarla con 're.compile'
 tokenizer.pre_tokenizer = Sequence([
     Split(pattern=special_tokens_pattern, behavior="isolated"),
     ByteLevel(add_prefix_space=False)
@@ -58,7 +51,6 @@ print("3/5 - Preparazione del trainer BPE...")
 trainer = BpeTrainer(vocab_size=VOCAB_SIZE, special_tokens=SPECIAL_TOKENS)
 
 def corpus_iterator():
-    """Un generatore che fornisce le righe del corpus una alla volta."""
     files = [SOURCE_FILE, TARGET_FILE]
     for filepath in files:
         if not os.path.exists(filepath):
@@ -79,7 +71,6 @@ print(f"5/5 - Salvataggio del tokenizer in '{TOKENIZER_FILE}'...")
 tokenizer.save(TOKENIZER_FILE)
 print("Tokenizer salvato con successo.")
 
-# --- BLOCCO DI VERIFICA (invariato) ---
 print("\n" + "="*50)
 print("--- Esempio di utilizzo del tokenizer addestrato ---")
 loaded_tokenizer = Tokenizer.from_file(TOKENIZER_FILE)

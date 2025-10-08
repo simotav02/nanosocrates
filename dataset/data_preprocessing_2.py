@@ -5,11 +5,9 @@ import os
 import re
 from collections import defaultdict, Counter
 
-# --- CONFIGURAZIONE ---
 INPUT_JSON_FILE = "film_dataset_5000_cleaned.json"
 OUTPUT_DIR = "training_data_cleaned"
 
-# Token speciali
 SOT_TOKEN = "<SOT>";
 EOT_TOKEN = "<EOT>";
 SUBJ_TOKEN = "<SUBJ>"
@@ -23,7 +21,6 @@ MLM_TOKEN = "<MLM>"
 
 
 def linearize_triples(triples):
-    """Converte una lista di triple in una singola stringa serializzata."""
     if not triples: return ""
     return " ".join(
         [f"{SOT_TOKEN} {SUBJ_TOKEN} {t['subject']} {PRED_TOKEN} {t['predicate']} {OBJ_TOKEN} {t['object']} {EOT_TOKEN}"
@@ -31,7 +28,6 @@ def linearize_triples(triples):
 
 
 def is_entity_in_text(entity: str, text: str) -> bool:
-    """Controlla se un'entità (es. 'dbr:Christopher_Nolan') è menzionata in un testo."""
     if not isinstance(entity, str): return False
     entity_name = entity.split(':')[-1].replace('_', ' ')
     entity_name = re.sub(r'\(.*?\)', '', entity_name).strip()
@@ -40,10 +36,6 @@ def is_entity_in_text(entity: str, text: str) -> bool:
 
 
 def main():
-    """
-    Funzione principale che legge il JSON, applica regole di pulizia,
-    genera gli esempi con logiche avanzate e li salva nei file di training.
-    """
     print(f"Caricamento dati da '{INPUT_JSON_FILE}'...")
     with open(INPUT_JSON_FILE, 'r', encoding='utf-8') as f:
         all_films_data = json.load(f)
@@ -67,27 +59,22 @@ def main():
         abstract = film_data.get("abstract", "").strip()
         all_triples = film_data.get("triples", [])
 
-        # --- BLOCCO DI VALIDAZIONE E PULIZIA DEL RECORD ---
-        # Regola 1: Dati essenziali mancanti
+
         if not all([title, subject_uri, abstract, all_triples]):
             rejection_reasons['dati_mancanti'] += 1;
             continue
-        # Regola 2: Coerenza del soggetto
         all_triples = [t for t in all_triples if t.get('subject') == subject_uri]
         if not all_triples:
             rejection_reasons['nessuna_tripla_coerente'] += 1;
             continue
-        # Regola 3: Completezza minima delle triple
         predicates_in_record = {t['predicate'] for t in all_triples}
         if not {"dbo:director", "dbo:starring"}.issubset(predicates_in_record):
             rejection_reasons['triple_incomplete'] += 1;
             continue
-        # Regola 4: Lunghezza minima dell'abstract
         if len(abstract) < 250:
             rejection_reasons['abstract_troppo_corto'] += 1;
             continue
-        # --- REGOLA 5 RIMOSSA ---
-        # Regola 6: Coerenza Titolo-Abstract
+
         title_cleaned = title.split('(')[0].strip()
         if not title_cleaned or title_cleaned.lower() not in abstract.lower():
             rejection_reasons['titolo_non_in_abstract'] += 1;
@@ -95,7 +82,6 @@ def main():
 
         records_kept += 1
 
-        # --- GENERAZIONE DEGLI ESEMPI DAI DATI PULITI ---
         text2rdf_triples = [t for t in all_triples if is_entity_in_text(t['object'], abstract)]
         if text2rdf_triples:
             text2rdf_examples.append(
@@ -120,13 +106,11 @@ def main():
                                       "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {MASK_TOKEN} {OBJ_TOKEN} {triple['object']} {EOT_TOKEN} {MLM_TOKEN}",
                                       "output": triple['predicate']})
 
-    # --- STAMPA DIAGNOSTICA PULIZIA ---
     print(
         "\n" + "=" * 50 + "\n--- Risultati della Fase di Pulizia dei Dati ---\n" + f"Record totali processati: {records_processed}\n" + f"Record scartati: {records_processed - records_kept} ({((records_processed - records_kept) / records_processed) * 100:.2f}%)\n" + f"Record tenuti per il training: {records_kept}\n\nDettaglio motivi di scarto:")
     for reason, count in rejection_reasons.items(): print(f"- {reason}: {count}")
     print("=" * 50 + "\n")
 
-    # --- BILANCIAMENTO A PERCENTUALI FISSE ---
     print("\n--- Bilanciamento Finale a Percentuali Fisse ---")
 
     random.shuffle(text2rdf_examples);

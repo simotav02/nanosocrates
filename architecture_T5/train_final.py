@@ -1,5 +1,3 @@
-# train_final.py (Script Unico con le modifiche richieste)
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
@@ -21,7 +19,6 @@ from config_pretrain import get_pretrain_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 
-# --- FUNZIONI DI UTILITY (decodifica, parse) ---
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
     sot_idx = tokenizer.token_to_id('<SOT>')
     eot_idx = tokenizer.token_to_id('<EOT>')
@@ -344,7 +341,6 @@ def train_model(config, phase: str):
             global_step = state.get('global_step', 0)
         print(f"Il training parte dall'epoca {initial_epoch}")
 
-    # --- MODIFICA DELLO SCHEDULER ---
     print(f"Scheduler: LinearLR con decadimento lineare per {config['num_epochs']} epoche.")
     scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1,
                                                   total_iters=config['num_epochs'])

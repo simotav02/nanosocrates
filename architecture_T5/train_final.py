@@ -1,4 +1,4 @@
-# train_final.py (Script Unico - Versione Definitiva con Tutte le Modifiche)
+# train_final.py (Script Unico con le modifiche richieste)
 
 import torch
 import torch.nn as nn
@@ -109,78 +109,62 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         total_correct_tokens = 0
         total_tokens = 0
         loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>')).to(device)
-
         with torch.no_grad():
-            # Il DataLoader per la validazione del pre-train ora ha un batch size > 1
             for batch in tqdm(validation_ds, desc="Validating Pretrain"):
                 encoder_input = batch['encoder_input'].to(device)
                 decoder_input = batch['decoder_input'].to(device)
                 encoder_mask = batch['encoder_mask'].to(device)
                 decoder_mask = batch['decoder_mask'].to(device)
                 label = batch['label'].to(device)
-
                 encoder_output = model.encode(encoder_input, encoder_mask)
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
                 proj_output = model.project(decoder_output)
-
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
                 total_val_loss += loss.item()
-
                 _, predicted_tokens = torch.max(proj_output, dim=-1)
                 non_pad_mask = (label != tokenizer.token_to_id('<PAD>'))
                 total_correct_tokens += (predicted_tokens.eq(label) & non_pad_mask).sum().item()
                 total_tokens += non_pad_mask.sum().item()
-
         avg_val_loss = total_val_loss / len(validation_ds) if len(validation_ds) > 0 else 0
         token_accuracy = total_correct_tokens / total_tokens if total_tokens > 0 else 0
-
-        print(f"\n--- Pre-training Validation Metrics ---")
-        print(f"Average Validation Loss: {avg_val_loss:.4f}")
-        print(f"Token-level Accuracy: {token_accuracy:.4f}\n")
-
+        print(
+            f"\n--- Pre-training Validation Metrics ---\nAverage Validation Loss: {avg_val_loss:.4f}\nToken-level Accuracy: {token_accuracy:.4f}\n")
         if writer:
             writer.add_scalar('validation/pretrain/loss', avg_val_loss, global_step)
             writer.add_scalar('validation/pretrain/token_accuracy', token_accuracy, global_step)
-
         print("--- Esempi Qualitativi di Denoising (Pre-training) ---")
         with torch.no_grad():
-            # Mostra 5 esempi dal primo batch di validazione
             first_batch = next(iter(validation_ds))
             for i in range(min(5, first_batch['encoder_input'].size(0))):
                 encoder_input = first_batch["encoder_input"][i:i + 1].to(device)
                 encoder_mask = first_batch["encoder_mask"][i:i + 1].to(device)
-
                 model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
-
                 source_text = first_batch["src_text"][i]
                 target_text = first_batch["tgt_text"][i]
                 model_out_text = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
                 print(
                     f"\n--- Esempio {i + 1} ---\nINPUT      : {source_text}\nRIFERIMENTO: {target_text}\nPREDIZIONE : {model_out_text}")
-
         print("\n" + "=" * 80 + "\n")
         model.train()
         return
 
-    # --- Sezione di validazione per il FINE-TUNING ---
     count = -1 if num_examples_to_run == -1 else num_examples_to_run
     rdf2text_preds, rdf2text_labels = [], []
     text2rdf_tp, text2rdf_fp, text2rdf_fn = 0, 0, 0
     continuerdf_tp, continuerdf_fp, continuerdf_fn = 0, 0, 0
     mlm_correct, mlm_total = 0, 0
-
     qualitative_examples = {}
     tasks_needed = {"Text2RDF", "RDF2Text", "MLM", "CONTINUERDF"}
     task_counter = Counter()
+    sot_id = tokenizer.token_to_id('<SOT>')
+    eot_id = tokenizer.token_to_id('<EOT>')
 
     with torch.no_grad():
         desc = f"Validating ({decode_strategy.capitalize()})"
         for i, batch in enumerate(tqdm(validation_ds, desc=desc)):
             if i == count and count != -1: break
-
             encoder_input = batch["encoder_input"].to(device)
             encoder_padding_mask = batch["encoder_mask"].to(device)
-
             if decode_strategy == 'beam':
                 model_out_tokens = beam_search_decode(model, 5, encoder_input, encoder_padding_mask, tokenizer, max_len,
                                                       device)
@@ -189,11 +173,15 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                                                          device, k=50)
             else:
                 model_out_tokens = greedy_decode(model, encoder_input, encoder_padding_mask, tokenizer, max_len, device)
-
             source_text = batch["src_text"][0]
             target_text = batch["tgt_text"][0]
-            model_out_text_raw = tokenizer.decode(model_out_tokens.detach().cpu().numpy(), skip_special_tokens=False)
-
+            tokens_to_decode = model_out_tokens.detach().cpu().numpy()
+            model_out_text_raw = tokenizer.decode(tokens_to_decode, skip_special_tokens=False)
+            start_index = 1 if len(tokens_to_decode) > 0 and tokens_to_decode[0] == sot_id else 0
+            eot_indices = [idx for idx, token_id in enumerate(tokens_to_decode) if token_id == eot_id]
+            end_index = eot_indices[0] if eot_indices else len(tokens_to_decode)
+            clean_tokens = tokens_to_decode[start_index:end_index]
+            model_out_text_clean = tokenizer.decode(clean_tokens, skip_special_tokens=True).strip()
             current_task = None
             if "<RDF2Text>" in source_text:
                 current_task = "RDF2Text"
@@ -205,14 +193,14 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 current_task = "MLM"
 
             if current_task and current_task in tasks_needed and current_task not in qualitative_examples:
+                prediction_to_show = model_out_text_raw
+                if current_task in ["RDF2Text", "MLM"]:
+                    prediction_to_show = model_out_text_clean
                 qualitative_examples[current_task] = {
-                    "source": source_text, "prediction": model_out_text_raw, "ground_truth": target_text
+                    "source": source_text, "prediction": prediction_to_show, "ground_truth": target_text
                 }
-
             if current_task == "RDF2Text":
                 task_counter['RDF2Text'] += 1
-                model_out_text_clean = tokenizer.decode(model_out_tokens.detach().cpu().numpy(),
-                                                        skip_special_tokens=True)
                 rdf2text_preds.append(model_out_text_clean or ".")
                 rdf2text_labels.append([target_text])
             elif current_task == "Text2RDF":
@@ -232,38 +220,27 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             elif current_task == "MLM":
                 task_counter['MLM'] += 1
                 mlm_total += 1
-                tokens_to_decode = model_out_tokens.detach().cpu().numpy()
-                sot_id = tokenizer.token_to_id('<SOT>')
-                eot_id = tokenizer.token_to_id('<EOT>')
-                start_index = 1 if len(tokens_to_decode) > 0 and tokens_to_decode[0] == sot_id else 0
-                eot_indices = [idx for idx, token_id in enumerate(tokens_to_decode) if token_id == eot_id]
-                end_index = eot_indices[0] if eot_indices else len(tokens_to_decode)
-                clean_tokens = tokens_to_decode[start_index:end_index]
-                prediction_text = tokenizer.decode(clean_tokens, skip_special_tokens=True).strip()
-                if prediction_text == target_text.strip():
+                if model_out_text_clean == target_text.strip():
                     mlm_correct += 1
             else:
                 task_counter['Unknown'] += 1
 
     print("\n" + "=" * 80)
     print(f"Riepilogo task trovati nel validation set: {dict(task_counter)}")
-
     if rdf2text_preds:
         bleu = evaluate.load("bleu").compute(predictions=rdf2text_preds, references=rdf2text_labels)
         rouge = evaluate.load("rouge").compute(predictions=rdf2text_preds, references=rdf2text_labels)
         meteor = evaluate.load("meteor").compute(predictions=rdf2text_preds, references=rdf2text_labels)
         print(
             f"--- RDF2Text Metrics ---\nBLEU: {bleu['bleu']:.4f}, ROUGE-L: {rouge['rougeL']:.4f}, METEOR: {meteor['meteor']:.4f}\n")
-        if writer:
-            writer.add_scalar(f'validation/{decode_strategy}/rdf2text_bleu', bleu['bleu'], global_step)
+        if writer: writer.add_scalar(f'validation/{decode_strategy}/rdf2text_bleu', bleu['bleu'], global_step)
 
     if (text2rdf_tp + text2rdf_fp > 0) or (text2rdf_tp + text2rdf_fn > 0):
         precision = text2rdf_tp / (text2rdf_tp + text2rdf_fp) if (text2rdf_tp + text2rdf_fp) > 0 else 0
         recall = text2rdf_tp / (text2rdf_tp + text2rdf_fn) if (text2rdf_tp + text2rdf_fn) > 0 else 0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         print(f"--- Text2RDF Metrics ---\nPrecision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}\n")
-        if writer:
-            writer.add_scalar(f'validation/{decode_strategy}/text2rdf_f1', f1, global_step)
+        if writer: writer.add_scalar(f'validation/{decode_strategy}/text2rdf_f1', f1, global_step)
 
     if (continuerdf_tp + continuerdf_fp > 0) or (continuerdf_tp + continuerdf_fn > 0):
         precision = continuerdf_tp / (continuerdf_tp + continuerdf_fp) if (continuerdf_tp + continuerdf_fp) > 0 else 0
@@ -271,8 +248,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         print(
             f"--- RDF Completion (CONTINUERDF) Metrics ---\nPrecision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}\n")
-        if writer:
-            writer.add_scalar(f'validation/{decode_strategy}/continuerdf_f1', f1, global_step)
+        if writer: writer.add_scalar(f'validation/{decode_strategy}/continuerdf_f1', f1, global_step)
 
     if mlm_total > 0:
         accuracy = mlm_correct / mlm_total
@@ -368,8 +344,11 @@ def train_model(config, phase: str):
             global_step = state.get('global_step', 0)
         print(f"Il training parte dall'epoca {initial_epoch}")
 
-    print("Scheduler: CosineAnnealingWarmRestarts con T_0=10 e T_mult=2")
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+    # --- MODIFICA DELLO SCHEDULER ---
+    print(f"Scheduler: LinearLR con decadimento lineare per {config['num_epochs']} epoche.")
+    scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1,
+                                                  total_iters=config['num_epochs'])
+
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
                                   label_smoothing=config['loss_label_smoothing']).to(device)
 

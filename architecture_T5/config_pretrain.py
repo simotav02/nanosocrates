@@ -1,60 +1,72 @@
-# config.py (precedentemente config_pretrain.py)
-
 from pathlib import Path
-
 
 def get_base_config():
     """
-    Configurazione di base 'NANO' per combattere l'overfitting e accelerare il training.
-    Condivisa tra pre-training e fine-tuning.
+    Configurazione 'NANO' per combattere l'overfitting.
+     dropout aumentato e modello più piccolo.
     """
     return {
-        "batch_size": 16,  # Aumentato grazie al modello più piccolo
-        "seq_len": 256,  # CRUCIALE: riduce drasticamente memoria e tempi
-        "d_model": 256,  # Dimensione embedding/hidden state ridotta
-        "N": 3,  # 3 layer encoder/decoder invece di 6
-        "h": 4,  # Meno teste di attenzione
-        "d_ff": 1024,  # Feed-forward dimension (solitamente 4 * d_model)
-        "dropout": 0.1,
-        "num_validation_examples": -1,  # Numero di esempi da usare per la validazione
+        "batch_size": 16,
+        "seq_len": 256,
+        "d_model": 256,
+        "N": 2,                   # Ridotto a 2 layer per un modello ancora più semplice
+        "h": 4,
+        "d_ff": 1024,
+        "dropout": 0.3,           # Aumentato in modo significativo per combattere l'overfitting
+        "num_validation_examples": 500,
         "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
     }
-
 
 def get_pretrain_config():
     """Configurazione per la fase di PRE-TRAINING con Span Corruption."""
     config = get_base_config()
     config.update({
         "num_epochs": 50,
-        "lr": 3e-4,  # Un learning rate più alto è corretto per il training da zero
-        "validate_every_n_epochs": 10,
+        "lr": 3e-4,
+        "validate_every_n_epochs": 5, # Validiamo più spesso per trovare il punto di early stopping
         "data_dir": "pretrain_t5_style_data",
         "model_folder": "weights_pretrain_t5",
         "model_basename": "nanosocrates_t5_pretrained_",
         "experiment_name": "runs/nanosocrates_pretrain_t5",
-        "preload": None,  # Deve partire da zero
-        "loss_label_smoothing": 0.0,  # NIENTE label smoothing per il pre-training
+        "preload": None,
+        "loss_label_smoothing": 0.0,
     })
     return config
 
+def get_task_adapt_config():
+    """Configurazione per la fase di ADATTAMENTO al task strutturato (MLM)."""
+    config = get_base_config()
+    config.update({
+        "num_epochs": 30,         # Epoche sufficienti per imparare la sintassi
+        "lr": 4e-5,               # Learning rate basso, stiamo solo adattando
+        "validate_every_n_epochs": 5,
+        "data_dir": "mlm_only_data", # <-- Usa i dati solo MLM
+        "model_folder": "weights_task_adapt_t5",
+        "model_basename": "nanosocrates_t5_task_adapt_",
+        "experiment_name": "runs/nanosocrates_task_adapt_t5",
+        # --- CARICA IL MIGLIOR MODELLO DAL PRE-TRAINING ---
+        # MODIFICA 'XX' con il numero di epoca del checkpoint migliore!
+        "preload": "weights_pretrain_t5/nanosocrates_t5_pretrained_XX.pt",
+        "loss_label_smoothing": 0.0,
+    })
+    return config
 
 def get_finetune_config():
     """Configurazione per la fase di FINE-TUNING sui 4 task specifici."""
     config = get_base_config()
+    # Per il fine-tuning, un dropout leggermente più basso può aiutare
+    config['dropout'] = 0.2
     config.update({
-        "num_epochs": 80,
-        "lr": 2e-5,  # <-- LEARNING RATE CRUCIALE: più basso per un fine-tuning stabile
-        "validate_every_n_epochs": 5,
+        "num_epochs": 60,         # Aumentato leggermente
+        "lr": 2e-5,               # Learning rate molto basso
+        "validate_every_n_epochs": 2,
         "data_dir": "../dataset/training_data_cleaned",
         "model_folder": "weights_finetuned_t5",
         "model_basename": "nanosocrates_t5_finetuned_",
         "experiment_name": "runs/nanosocrates_finetune_t5",
-
-        # --- PUNTO CHIAVE: Carica i pesi del miglior modello PRE-ADDESTRATO ---
-        # MODIFICA 'XX' con il numero di epoca del checkpoint migliore ottenuto dal pre-training!
-        # Esempio: "weights_pretrain_t5/nanosocrates_t5_pretrained_49.pt"
-        "preload": "weights_pretrain_t5/nanosocrates_t5_pretrained_49.pt",
-
-        "loss_label_smoothing": 0.1,  # Usa il label smoothing per il fine-tuning per regolarizzare
+        # --- CARICA IL MIGLIOR MODELLO DAL TASK-ADAPTATION ---
+        # MODIFICA 'YY' con il numero di epoca del checkpoint migliore!
+        "preload": "weights_task_adapt_t5/nanosocrates_t5_task_adapt_YY.pt",
+        "loss_label_smoothing": 0.1,
     })
     return config

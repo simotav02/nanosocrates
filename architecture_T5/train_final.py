@@ -1,4 +1,4 @@
-# train_final.py (Script Unico - Versione con Top-K Sampling e CosineAnnealing)
+# train_final.py (Script Unico - Versione Definitiva Corretta)
 
 import torch
 import torch.nn as nn
@@ -17,8 +17,7 @@ from collections import defaultdict, Counter
 from torch.utils.tensorboard import SummaryWriter
 
 from model_lib import build_transformer
-# Assicurati che il file di configurazione si chiami 'config.py'
-from config import get_pretrain_config, get_task_adapt_config, get_finetune_config
+from config_pretrain import get_pretrain_config, get_task_adapt_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 
@@ -40,7 +39,7 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device):
     return decoder_input.squeeze(0)
 
 
-def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len, device):
+def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len, device, repetition_penalty=1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
     encoder_output = model.encode(source, source_mask)
@@ -56,7 +55,14 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
             has_active_beams = True
             decoder_mask = (candidate_seq == pad_idx).to(device)
             out = model.decode(encoder_output, source_mask, candidate_seq, decoder_mask)
-            log_probs = torch.log_softmax(model.project(out[:, -1]), dim=-1)
+            logits = model.project(out[:, -1])
+            if repetition_penalty != 1.0:
+                for token_id in set(candidate_seq[0].tolist()):
+                    if logits[0, token_id] > 0:
+                        logits[0, token_id] /= repetition_penalty
+                    else:
+                        logits[0, token_id] *= repetition_penalty
+            log_probs = torch.log_softmax(logits, dim=-1)
             topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
             for i in range(beam_size):
                 token_idx, token_log_prob = topk_idx[0, i].unsqueeze(0).unsqueeze(0), topk_log_probs[0, i].item()
@@ -72,7 +78,7 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
     return best_beam[0].squeeze()
 
 
-def top_k_sampling_decode(model, source, source_mask, tokenizer, max_len, device, k=50):
+def top_k_sampling_decode(model, source, source_mask, tokenizer, max_len, device, k=50, repetition_penalty=1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
     encoder_output = model.encode(source, source_mask)
@@ -81,6 +87,12 @@ def top_k_sampling_decode(model, source, source_mask, tokenizer, max_len, device
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
         logits = model.project(out[:, -1])
+        if repetition_penalty != 1.0:
+            for token_id in set(decoder_input[0].tolist()):
+                if logits[0, token_id] > 0:
+                    logits[0, token_id] /= repetition_penalty
+                else:
+                    logits[0, token_id] *= repetition_penalty
         top_k_logits, top_k_indices = torch.topk(logits, k, dim=-1)
         probabilities = torch.softmax(top_k_logits, dim=-1)
         next_token_id = top_k_indices.gather(-1, torch.multinomial(probabilities, num_samples=1))
@@ -99,12 +111,10 @@ def parse_rdf_triples(text: str) -> set:
     return triples
 
 
-# --- FUNZIONE DI VALIDAZIONE AGGIORNATA ---
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run,
                    decode_strategy, phase):
     model.eval()
     if phase == 'pretrain' or phase == 'task_adapt':
-        # ... (Questa sezione rimane invariata)
         total_val_loss, total_correct_tokens, total_tokens = 0, 0, 0
         loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>')).to(device)
         with torch.no_grad():
@@ -131,7 +141,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         model.train()
         return
 
-    # --- Sezione di validazione per il FINE-TUNING ---
     rdf2text_preds, rdf2text_labels = [], []
     text2rdf_tp, text2rdf_fp, text2rdf_fn = 0, 0, 0
     continuerdf_tp, continuerdf_fp, continuerdf_fn = 0, 0, 0
@@ -145,16 +154,13 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         desc = f"Validating ({decode_strategy.capitalize()})"
         for i, batch in enumerate(tqdm(validation_ds, desc=desc)):
             if i == num_examples_to_run: break
-
             encoder_input, encoder_padding_mask = batch["encoder_input"].to(device), batch["encoder_mask"].to(device)
-
-            # --- MODIFICA 1: La decodifica di default è ora Top-K Sampling ---
             if decode_strategy == 'beam':
                 model_out_tokens = beam_search_decode(model, 5, encoder_input, encoder_padding_mask, tokenizer, max_len,
                                                       device)
-            else:  # 'sampling' è la strategia di default per la validazione durante il training
+            else:
                 model_out_tokens = top_k_sampling_decode(model, encoder_input, encoder_padding_mask, tokenizer, max_len,
-                                                         device, k=50)
+                                                         device)
 
             source_text, target_text = batch["src_text"][0], batch["tgt_text"][0]
             tokens_to_decode = model_out_tokens.detach().cpu().numpy()
@@ -164,15 +170,12 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             end_index = eot_indices[0] if eot_indices else len(tokens_to_decode)
             model_out_text_clean = tokenizer.decode(tokens_to_decode[start_index:end_index],
                                                     skip_special_tokens=True).strip()
-
             current_task = next((task for task in tasks_needed if f"<{task}>" in source_text), None)
-
             if current_task and current_task not in qualitative_examples:
                 prediction_to_show = model_out_text_raw if current_task in ["Text2RDF",
                                                                             "CONTINUERDF"] else model_out_text_clean
                 qualitative_examples[current_task] = {"source": source_text, "prediction": prediction_to_show,
                                                       "ground_truth": target_text}
-
             if current_task: task_counter[current_task] += 1
             if current_task == "RDF2Text":
                 rdf2text_preds.append(model_out_text_clean or ".");
@@ -196,7 +199,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         meteor = evaluate.load("meteor").compute(predictions=rdf2text_preds, references=rdf2text_labels)
         print(
             f"--- RDF2Text Metrics ---\nBLEU: {bleu['bleu']:.4f}, ROUGE-L: {rouge['rougeL']:.4f}, METEOR: {meteor['meteor']:.4f}\n")
-        if writer: writer.add_scalar(f'validation/{decode_strategy}/rdf2text_bleu', bleu['bleu'], global_step)
     for task_name, (tp, fp, fn) in [("Text2RDF", (text2rdf_tp, text2rdf_fp, text2rdf_fn)),
                                     ("CONTINUERDF", (continuerdf_tp, continuerdf_fp, continuerdf_fn))]:
         if (tp + fp > 0) or (tp + fn > 0):
@@ -205,11 +207,9 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
             print(
                 f"--- {task_name} Metrics ---\nPrecision: {precision:.4f}, Recall: {recall:.4f}, F1-Score: {f1:.4f}\n")
-            if writer: writer.add_scalar(f'validation/{decode_strategy}/{task_name.lower()}_f1', f1, global_step)
     if mlm_total > 0:
         accuracy = mlm_correct / mlm_total
         print(f"--- RDF Completion (MLM) Metrics ---\nAccuracy: {accuracy:.4f}\n")
-        if writer: writer.add_scalar(f'validation/{decode_strategy}/mlm_accuracy', accuracy, global_step)
     print("=" * 80 + "\n--- Esempi Qualitativi (Uno per Task) ---")
     for task_name in sorted(list(tasks_needed)):
         ex = qualitative_examples.get(task_name)
@@ -223,7 +223,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
 
 def get_ds(config, phase: str):
-    # ... (Questa funzione rimane invariata)
     tokenizer = Tokenizer.from_file(str(Path(config['tokenizer_file'])))
     source_path = os.path.join(config['data_dir'], "train.source");
     target_path = os.path.join(config['data_dir'], "train.target")
@@ -276,19 +275,43 @@ def train_model(config, phase: str):
 
     initial_epoch, global_step = 0, 0
     if config.get('preload'):
-        # ... (Logica di preload invariata)
-        pass
+        preload_path = config['preload']
+        if not os.path.exists(preload_path):
+            print(f"ATTENZIONE: File di preload '{preload_path}' non trovato. Il modello partirà da zero.")
+        else:
+            print(f"Preloading model {preload_path}")
+            state = torch.load(preload_path, map_location=device)
+            model.load_state_dict(state['model_state_dict'])
 
-    # --- MODIFICA 2: Ripristinato lo scheduler CosineAnnealingWarmRestarts ---
-    print("Scheduler: CosineAnnealingWarmRestarts con T_0=10 e T_mult=2")
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+            is_new_phase = (phase == 'task_adapt' and 'pretrain' in preload_path) or \
+                           (phase == 'finetune' and ('task_adapt' in preload_path or 'pretrain' in preload_path))
+
+            if is_new_phase:
+                print(f"Inizio di una nuova fase ({phase}): i contatori di epoca e step vengono resettati.")
+                initial_epoch, global_step = 0, 0
+            else:
+                print("Continuazione di un training interrotto.")
+                initial_epoch = state.get('epoch', -1) + 1
+                if 'optimizer_state_dict' in state:
+                    optimizer.load_state_dict(state['optimizer_state_dict'])
+                global_step = state.get('global_step', 0)
+
+            print(f"Il training parte dall'epoca {initial_epoch}")
+
+    if phase == 'pretrain':
+        print("Scheduler: CosineAnnealingWarmRestarts con T_0=10 e T_mult=2")
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+    else:  # Per task_adapt e finetune
+        print(f"Scheduler: LinearLR con decadimento lineare per {config['num_epochs']} epoche.")
+        # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1,
+        #                                               total_iters=config['num_epochs'])
+
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
                                   label_smoothing=config['loss_label_smoothing']).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
-        # ... (Loop di training principale invariato)
-        # ...
         model.train()
         total_loss = 0.0
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
@@ -311,16 +334,12 @@ def train_model(config, phase: str):
         avg_epoch_loss = total_loss / len(batch_iterator)
         writer.add_scalar(f'train_epoch_loss/{phase}', avg_epoch_loss, epoch)
         print(f"--- Epoch {epoch:02d} finished. Average Training Loss: {avg_epoch_loss:.4f} ---")
-
-        # L'aggiornamento dello scheduler avviene a fine epoca per entrambi i tipi
         scheduler.step()
-
         writer.add_scalar(f'learning_rate/{phase}', optimizer.param_groups[0]['lr'], epoch)
         print(f"Learning rate per la prossima epoca: {optimizer.param_groups[0]['lr']:.2e}")
 
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
-            # La validazione ora usa 'sampling' di default
             run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
                            config['num_validation_examples'], 'sampling', phase)
             torch.save(

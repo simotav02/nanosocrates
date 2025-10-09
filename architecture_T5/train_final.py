@@ -56,12 +56,15 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
             decoder_mask = (candidate_seq == pad_idx).to(device)
             out = model.decode(encoder_output, source_mask, candidate_seq, decoder_mask)
             logits = model.project(out[:, -1])
+
+            # --- APPLICAZIONE REPETITION PENALTY ---
             if repetition_penalty != 1.0:
                 for token_id in set(candidate_seq[0].tolist()):
                     if logits[0, token_id] > 0:
                         logits[0, token_id] /= repetition_penalty
                     else:
                         logits[0, token_id] *= repetition_penalty
+
             log_probs = torch.log_softmax(logits, dim=-1)
             topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
             for i in range(beam_size):
@@ -87,12 +90,15 @@ def top_k_sampling_decode(model, source, source_mask, tokenizer, max_len, device
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
         logits = model.project(out[:, -1])
+
+        # --- APPLICAZIONE REPETITION PENALTY ---
         if repetition_penalty != 1.0:
             for token_id in set(decoder_input[0].tolist()):
                 if logits[0, token_id] > 0:
                     logits[0, token_id] /= repetition_penalty
                 else:
                     logits[0, token_id] *= repetition_penalty
+
         top_k_logits, top_k_indices = torch.topk(logits, k, dim=-1)
         probabilities = torch.softmax(top_k_logits, dim=-1)
         next_token_id = top_k_indices.gather(-1, torch.multinomial(probabilities, num_samples=1))
@@ -302,10 +308,10 @@ def train_model(config, phase: str):
         print("Scheduler: CosineAnnealingWarmRestarts con T_0=10 e T_mult=2")
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
     else:  # Per task_adapt e finetune
-        print(f"Scheduler: LinearLR con decadimento lineare per {config['num_epochs']} epoche.")
+        # print(f"Scheduler: LinearLR con decadimento lineare per {config['num_epochs']} epoche.")
         # scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.1,
         #                                               total_iters=config['num_epochs'])
-
+        print("Scheduler: CosineAnnealingWarmRestarts con T_0=10 e T_mult=2")
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),

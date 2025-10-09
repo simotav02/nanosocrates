@@ -58,8 +58,8 @@ def get_finetune_config():
     config['dropout'] = 0.2
     config.update({
         "num_epochs": 60,         # Aumentato leggermente
-        "lr": 2e-5,               # Learning rate molto basso
-        "validate_every_n_epochs": 2,
+        "lr": 3e-5,               # Learning rate molto basso
+        "validate_every_n_epochs": 5,
         "data_dir": "../dataset/training_data_cleaned",
         "model_folder": "weights_finetuned_t5",
         "model_basename": "nanosocrates_t5_finetuned_",

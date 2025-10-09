@@ -46,7 +46,7 @@ def get_task_adapt_config():
         "experiment_name": "runs/nanosocrates_task_adapt_t5",
         # --- CARICA IL MIGLIOR MODELLO DAL PRE-TRAINING ---
         # MODIFICA 'XX' con il numero di epoca del checkpoint migliore!
-        "preload": "weights_pretrain_t5/nanosocrates_t5_pretrained_XX.pt",
+        "preload": "weights_pretrain_t5/nanosocrates_t5_pretrained_09.pt",
         "loss_label_smoothing": 0.0,
     })
     return config
@@ -66,7 +66,7 @@ def get_finetune_config():
         "experiment_name": "runs/nanosocrates_finetune_t5",
         # --- CARICA IL MIGLIOR MODELLO DAL TASK-ADAPTATION ---
         # MODIFICA 'YY' con il numero di epoca del checkpoint migliore!
-        "preload": "weights_task_adapt_t5/nanosocrates_t5_task_adapt_YY.pt",
+        "preload": "weights_task_adapt_t5/nanosocrates_t5_task_adapt_29.pt",
         "loss_label_smoothing": 0.1,
     })
     return config

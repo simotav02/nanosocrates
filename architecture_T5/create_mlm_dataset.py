@@ -6,7 +6,7 @@ import random
 
 # --- CONFIGURAZIONE ---
 # Assicurati che il nome del file JSON corrisponda a quello generato da data_creation_2.py
-INPUT_JSON_FILE = "film_dataset_5000_cleaned.json"
+INPUT_JSON_FILE = "../dataset/film_dataset_5000_cleaned.json"
 OUTPUT_DIR = "mlm_only_data"
 
 # Token speciali

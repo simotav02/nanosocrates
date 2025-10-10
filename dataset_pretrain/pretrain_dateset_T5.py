@@ -1,4 +1,4 @@
-# pretrain_dateset_T5.py (Versione Modificata)
+# pretrain_dateset_T5.py (Versione Finale Completa e Corretta)
 
 import os
 import random
@@ -10,10 +10,7 @@ try:
 except ImportError:
     raise ImportError("Questo script richiede NumPy. Per favore, installalo con: pip install numpy")
 
-# --- MODIFICA 1: CAMBIA L'INPUT ---
-# INPUT_DATA_DIR = "../dataset/training_data_cleaned" # Vecchio input
-INPUT_CORPUS_FILE = "./pretrain_corpus_data/pretrain_corpus.txt"  # Nuovo input
-
+INPUT_CORPUS_FILE = "./pretrain_corpus_data/pretrain_corpus.txt"
 TOKENIZER_PATH = "../tokenizer/film_corpus_bpe_tokenizer_t5.json"
 OUTPUT_DIR = "pretrain_t5_style_data"
 
@@ -23,8 +20,10 @@ MEAN_NOISE_SPAN_LENGTH = 3.0
 
 def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, mean_noise_span_length: float):
     """
-    Versione finale e corretta della corruzione a span.
-    Manipola gli ID dei token e usa decode() una sola volta per evitare artefatti.
+    Versione definitiva e corretta della corruzione a span.
+    1. Lavora con gli ID dei token.
+    2. Usa decode(..., skip_special_tokens=False) per preservare <SOT>, <SUBJ>, etc.
+    3. Risolve il problema del carattere 'Ġ' e della scomparsa dei token strutturali.
     """
     encoding = tokenizer.encode(text)
     original_ids = encoding.ids
@@ -36,17 +35,13 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
     num_noise_tokens = round(n_tokens * noise_density)
     num_noise_tokens = min(max(num_noise_tokens, 1), n_tokens - 1)
 
-    # Scegli gli indici dei token da mascherare
-    indices_to_mask = sorted(np.random.permutation(n_tokens)[:num_noise_tokens])
+    indices_to_mask = np.random.permutation(n_tokens)[:num_noise_tokens]
 
-    if not indices_to_mask:
+    if len(indices_to_mask) == 0:
         return text, ""
 
-    input_ids_list = list(original_ids)
-    target_ids_list = []
-    extra_id_counter = 0
-
-    # Raggruppa indici consecutivi in span
+    # Raggruppa gli indici consecutivi in span
+    indices_to_mask = sorted(indices_to_mask)
     spans = []
     current_span = [indices_to_mask[0]]
     for i in range(1, len(indices_to_mask)):
@@ -57,7 +52,10 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
             current_span = [indices_to_mask[i]]
     spans.append(current_span)
 
-    # Marca gli ID da sostituire/rimuovere
+    input_ids_list = list(original_ids)
+    target_ids_list = []
+    extra_id_counter = 0
+
     for span_indices in spans:
         if extra_id_counter >= 150: break  # Limite di sicurezza
 
@@ -70,9 +68,8 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
         target_ids_list.append(extra_id_token_id)
         target_ids_list.extend([original_ids[i] for i in span_indices])
 
-        # Sostituisci il primo token dello span con il token extra_id
+        # Sostituisci il primo token dello span e marca gli altri
         input_ids_list[span_indices[0]] = extra_id_token_id
-        # Marca gli altri token dello span per la rimozione
         for i in span_indices[1:]:
             input_ids_list[i] = -1
 
@@ -85,14 +82,15 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
         if final_extra_id_token_id is not None:
             target_ids_list.append(final_extra_id_token_id)
 
-    # Filtra gli ID marcati per la rimozione dall'input
+    # Filtra gli ID marcati per la rimozione
     final_input_ids = [token_id for token_id in input_ids_list if token_id != -1]
 
-    # Decodifica le liste di ID una sola volta alla fine
-    corrupted_text = tokenizer.decode(final_input_ids)
-    target_text = tokenizer.decode(target_ids_list)
+    # Decodifica le liste di ID una sola volta alla fine, preservando i token speciali
+    corrupted_text = tokenizer.decode(final_input_ids, skip_special_tokens=False)
+    target_text = tokenizer.decode(target_ids_list, skip_special_tokens=False)
 
     return corrupted_text, target_text
+
 
 def main():
     print(f"--- Creazione del Dataset di Pre-training stile T5 (Approccio Puro) ---")
@@ -103,7 +101,6 @@ def main():
     print(f"1/4 - Caricamento del tokenizer da '{TOKENIZER_PATH}'...")
     tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
 
-    # --- MODIFICA 2: CAMBIA LA LOGICA DI LETTURA ---
     print(f"2/4 - Lettura del corpus di origine puro da '{INPUT_CORPUS_FILE}'...")
     if not os.path.exists(INPUT_CORPUS_FILE):
         print(f"ERRORE: File del corpus puro non trovato. Esegui prima 'create_pretrain_corpus.py'.")
@@ -124,7 +121,6 @@ def main():
         if corrupted_input and target:
             corrupted_examples.append({"input": corrupted_input, "output": target})
 
-    # ... (Il resto dello script, da "4/4 - Salvataggio...", rimane INVARIATO) ...
     print(f"4/4 - Salvataggio del nuovo dataset in '{OUTPUT_DIR}'...")
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)

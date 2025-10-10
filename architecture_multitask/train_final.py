@@ -1,5 +1,3 @@
-# train_final.py (Versione Finale Completa - Correzione .project)
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -21,7 +19,6 @@ from config_pretrain import get_pretrain_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 
-# --- FUNZIONI DI UTILITY (DECODIFICA E PARSING) ---
 
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repetition_penalty: float = 1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
@@ -31,7 +28,6 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repeti
     while decoder_input.size(1) < max_len:
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
-        # --- CORREZIONE ---
         logits = model.projection_layer(out[:, -1])
         if repetition_penalty != 1.0:
             for token_id in set(decoder_input[0].tolist()):
@@ -62,7 +58,6 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
             has_active_beams = True
             decoder_mask = (candidate_seq == pad_idx).to(device)
             out = model.decode(encoder_output, source_mask, candidate_seq, decoder_mask)
-            # --- CORREZIONE ---
             logits = model.projection_layer(out[:, -1])
             if repetition_penalty != 1.0:
                 for token_id in set(candidate_seq[0].tolist()):
@@ -120,7 +115,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 label = batch['label'].to(device)
                 encoder_output = model.encode(encoder_input, encoder_mask)
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-                # --- CORREZIONE ---
                 proj_output = model.projection_layer(decoder_output)
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
                 total_val_loss += loss.item()
@@ -362,7 +356,6 @@ def train_model(config, phase: str):
 
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-            # --- CORREZIONE ---
             proj_output = model.projection_layer(decoder_output)
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
 

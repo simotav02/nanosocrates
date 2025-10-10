@@ -1,16 +1,12 @@
-# create_pretrain_corpus.py
-
 import json
 import os
 from tqdm import tqdm
 import random
 
-# --- CONFIGURAZIONE ---
 INPUT_JSON_FILE = "../dataset/film_dataset_5000_cleaned.json"
 OUTPUT_DIR = "pretrain_corpus_data"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "pretrain_corpus.txt")
 
-# Token speciali per la linearizzazione, ma SENZA token di task
 SOT_TOKEN, EOT_TOKEN = "<SOT>", "<EOT>"
 SUBJ_TOKEN, PRED_TOKEN, OBJ_TOKEN = "<SUBJ>", "<PRED>", "<OBJ>"
 
@@ -52,7 +48,6 @@ def main():
             if linearized_rdf:
                 corpus_lines.append(linearized_rdf)
 
-    # Mescoliamo le righe per alternare testo naturale e RDF
     random.shuffle(corpus_lines)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)

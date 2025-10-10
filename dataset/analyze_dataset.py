@@ -37,38 +37,33 @@ def validate_dataset(filepath):
     errors = []
 
     for i, record in enumerate(data):
-        # 1. Controllo dello schema del record principale
         expected_keys = {"title", "subject_uri", "abstract", "triples"}
         if not isinstance(record, dict) or set(record.keys()) != expected_keys:
             errors.append(f"Record #{i}: Schema non corretto. Trovate chiavi: {list(record.keys())}")
-            continue  # Salta ulteriori controlli su questo record corrotto
+            continue
 
-        # 2. Controllo dei campi vuoti
         if not record.get("abstract"):
             errors.append(f"Record #{i} ('{record.get('title')}'): Abstract vuoto.")
         if not record.get("triples"):
             errors.append(f"Record #{i} ('{record.get('title')}'): Lista triple vuota.")
 
-        # 3. Controllo dello schema delle triple
         for triple in record["triples"]:
             expected_triple_keys = {"subject", "predicate", "object"}
             if not isinstance(triple, dict) or set(triple.keys()) != expected_triple_keys:
                 errors.append(f"Record #{i}: Tripla con schema non corretto: {triple}")
                 continue
 
-            # Aggiungi il predicato al set per il controllo finale
             all_predicates_found.add(triple['predicate'])
 
     if errors:
         print(f"\n❌ Trovati {len(errors)} errori di validazione:")
-        for error in errors[:10]:  # Stampa i primi 10 errori
+        for error in errors[:10]:
             print(f"  - {error}")
         if len(errors) > 10:
             print(f"  ... e altri {len(errors) - 10} errori.")
     else:
         print("✅ Successo: Tutti i record hanno lo schema corretto e non hanno campi critici vuoti.")
 
-    # 4. Controllo finale sulla whitelist dei predicati
     print("\n--- Controllo Vocabolario Predicati ---")
     unauthorized_predicates = all_predicates_found - WHITELISTED_PREDICATES
 

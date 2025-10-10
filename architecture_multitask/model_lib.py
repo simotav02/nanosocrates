@@ -1,5 +1,3 @@
-# model_lib.py
-
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -217,9 +215,6 @@ class Transformer(nn.Module):
         for block in self.decoder_blocks:
             x = block(x, encoder_output, src_padding_mask, tgt_padding_mask)
         return self.decoder_norm(x)
-
-    # Il metodo 'project' viene rimosso perché la logica di proiezione
-    # ora è gestita direttamente nel training loop in base al tipo di task.
 
 
 def build_transformer(vocab_size: int, seq_len: int, d_model: int = 512, N: int = 6, h: int = 8, dropout: float = 0.1,

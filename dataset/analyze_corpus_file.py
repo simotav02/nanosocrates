@@ -3,7 +3,6 @@ from collections import Counter
 
 INPUT_DIR = "training_data_cleaned"
 
-# I token speciali che definiscono i task. Devono corrispondere a quelli usati nello script di generazione.
 TEXT_TO_RDF_TOKEN = "<Text2RDF>"
 RDF_TO_TEXT_TOKEN = "<RDF2Text>"
 CONTINUE_RDF_TOKEN = "<CONTINUERDF>"
@@ -23,7 +22,6 @@ def analyze_training_corpus(directory):
 
     print(f"--- Inizio Analisi del Corpus in '{directory}' ---")
 
-    # Usiamo un Counter per tenere traccia del numero di esempi per ogni task.
     task_counts = Counter()
     total_lines = 0
 
@@ -33,7 +31,6 @@ def analyze_training_corpus(directory):
                 total_lines += 1
                 line = line.strip()
 
-                # Identifichiamo il task in base al token speciale presente nella riga di input.
                 if line.endswith(TEXT_TO_RDF_TOKEN):
                     task_counts['Text2RDF'] += 1
                 elif line.endswith(RDF_TO_TEXT_TOKEN):
@@ -48,11 +45,9 @@ def analyze_training_corpus(directory):
         print(f"Analisi completata. Trovati {total_lines} esempi totali.")
         print("-" * 40)
 
-        # --- Stampa dei Risultati ---
         print("Distribuzione dei Task nel Dataset:")
         print("-" * 40)
 
-        # Definiamo l'ordine desiderato per la stampa
         tasks_in_order = ['Text2RDF', 'RDF2Text', 'CONTINUERDF', 'MLM']
 
         for task_name in tasks_in_order:
@@ -63,14 +58,12 @@ def analyze_training_corpus(directory):
             else:
                 print(f"- Task '{task_name}': {count:6d} esempi (N/A)")
 
-        # Stampa eventuali task non riconosciuti
         if task_counts['Unknown'] > 0:
             print(f"- Task 'Unknown': {task_counts['Unknown']:6d} esempi (!!!)")
             print("\nATTENZIONE: Trovati esempi con formato non riconosciuto.")
 
         print("-" * 40)
 
-        # Calcolo e stampa dei totali per le due categorie principali
         generative_tasks_count = (task_counts['Text2RDF'] +
                                   task_counts['RDF2Text'] +
                                   task_counts['CONTINUERDF'])

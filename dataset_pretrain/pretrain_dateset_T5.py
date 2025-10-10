@@ -23,11 +23,12 @@ MEAN_NOISE_SPAN_LENGTH = 3.0
 
 def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, mean_noise_span_length: float):
     """
-    Versione corretta della corruzione a span, che gestisce correttamente la
-    decodifica dei token per evitare la corruzione dei dati.
+    Versione finale e corretta della corruzione a span.
+    Manipola gli ID dei token e usa decode() una sola volta per evitare artefatti.
     """
-    original_tokens = tokenizer.encode(text).tokens
-    n_tokens = len(original_tokens)
+    encoding = tokenizer.encode(text)
+    original_ids = encoding.ids
+    n_tokens = len(original_ids)
 
     if n_tokens < 2:
         return text, ""
@@ -41,7 +42,11 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
     if not indices_to_mask:
         return text, ""
 
-    # Raggruppa gli indici consecutivi in "span"
+    input_ids_list = list(original_ids)
+    target_ids_list = []
+    extra_id_counter = 0
+
+    # Raggruppa indici consecutivi in span
     spans = []
     current_span = [indices_to_mask[0]]
     for i in range(1, len(indices_to_mask)):
@@ -52,69 +57,42 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
             current_span = [indices_to_mask[i]]
     spans.append(current_span)
 
-    # Unisci span piccoli per raggiungere una lunghezza media desiderata
-    num_spans_to_keep = max(1, round(num_noise_tokens / mean_noise_span_length))
-
-    while len(spans) > num_spans_to_keep:
-        # Trova la distanza più piccola tra due span e li unisce
-        min_dist = float('inf')
-        merge_idx = -1
-        for i in range(len(spans) - 1):
-            dist = spans[i + 1][0] - spans[i][-1]
-            if dist < min_dist:
-                min_dist = dist
-                merge_idx = i
-
-        # Unisci gli span e tutto ciò che c'è in mezzo
-        end_of_first_span = spans[merge_idx][-1]
-        start_of_second_span = spans[merge_idx + 1][0]
-        merged_span = spans[merge_idx] + list(range(end_of_first_span + 1, start_of_second_span)) + spans[merge_idx + 1]
-
-        spans[merge_idx] = merged_span
-        del spans[merge_idx + 1]
-
-    input_parts = []
-    target_parts = []
-    extra_id_counter = 0
-    last_processed_idx = -1
-
+    # Marca gli ID da sostituire/rimuovere
     for span_indices in spans:
         if extra_id_counter >= 150: break  # Limite di sicurezza
 
-        start_span_idx = span_indices[0]
-        end_span_idx = span_indices[-1]
+        extra_id_token = f"<extra_id_{extra_id_counter}>"
+        extra_id_token_id = tokenizer.token_to_id(extra_id_token)
+        if extra_id_token_id is None:
+            raise ValueError(f"CRITICO: Impossibile trovare l'ID per il token '{extra_id_token}'.")
 
-        # Aggiungi la parte di testo non mascherata prima dello span corrente
-        input_parts.append("".join(original_tokens[last_processed_idx + 1: start_span_idx]))
+        # Aggiungi lo span al target
+        target_ids_list.append(extra_id_token_id)
+        target_ids_list.extend([original_ids[i] for i in span_indices])
 
-        # Aggiungi il token di maschera all'input
-        input_parts.append(f"<extra_id_{extra_id_counter}>")
+        # Sostituisci il primo token dello span con il token extra_id
+        input_ids_list[span_indices[0]] = extra_id_token_id
+        # Marca gli altri token dello span per la rimozione
+        for i in span_indices[1:]:
+            input_ids_list[i] = -1
 
-        # Aggiungi il token di maschera e il testo mascherato al target
-        target_parts.append(f"<extra_id_{extra_id_counter}>")
-        target_parts.append("".join(original_tokens[start_span_idx: end_span_idx + 1]))
-
-        last_processed_idx = end_span_idx
         extra_id_counter += 1
 
-    # Aggiungi l'ultima parte di testo non mascherata
-    input_parts.append("".join(original_tokens[last_processed_idx + 1:]))
-
-    # Aggiungi l'ultimo token di maschera al target
+    # Aggiungi il token di chiusura al target
     if extra_id_counter < 150:
-        target_parts.append(f"<extra_id_{extra_id_counter}>")
+        final_extra_id_token = f"<extra_id_{extra_id_counter}>"
+        final_extra_id_token_id = tokenizer.token_to_id(final_extra_id_token)
+        if final_extra_id_token_id is not None:
+            target_ids_list.append(final_extra_id_token_id)
 
-    # Ricostruisci le stringhe finali
-    corrupted_text = "".join(input_parts).replace(' ', ' ').strip()
-    target_text = "".join(target_parts).replace(' ', ' ').strip()
+    # Filtra gli ID marcati per la rimozione dall'input
+    final_input_ids = [token_id for token_id in input_ids_list if token_id != -1]
 
-    # Pulizia per il BPE: il tokenizer ByteLevel non ama gli spazi all'inizio
-    # Questa pulizia è specifica per come funziona il tokenizer huggingface
-    corrupted_text = corrupted_text.replace(' ', ' ').strip()
-    target_text = target_text.replace(' ', ' ').strip()
+    # Decodifica le liste di ID una sola volta alla fine
+    corrupted_text = tokenizer.decode(final_input_ids)
+    target_text = tokenizer.decode(target_ids_list)
 
     return corrupted_text, target_text
-
 
 def main():
     print(f"--- Creazione del Dataset di Pre-training stile T5 (Approccio Puro) ---")

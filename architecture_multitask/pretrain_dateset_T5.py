@@ -1,3 +1,4 @@
+# pretrain_dateset_T5.py (Versione Modificata)
 
 import os
 import random
@@ -9,18 +10,20 @@ try:
 except ImportError:
     raise ImportError("Questo script richiede NumPy. Per favore, installalo con: pip install numpy")
 
-
-INPUT_DATA_DIR = "../dataset/training_data_cleaned"  # O unified_multitask_data
+# --- MODIFICA 1: CAMBIA L'INPUT ---
+# INPUT_DATA_DIR = "../dataset/training_data_cleaned" # Vecchio input
+INPUT_CORPUS_FILE = "./pretrain_corpus_data/pretrain_corpus.txt"  # Nuovo input
 
 TOKENIZER_PATH = "../tokenizer/film_corpus_bpe_tokenizer_t5.json"
-
 OUTPUT_DIR = "pretrain_t5_style_data"
 
 CORRUPTION_RATE = 0.15
 MEAN_NOISE_SPAN_LENGTH = 3.0
 
 
+# ... (La funzione t5_span_corruption rimane INVARIATA) ...
 def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, mean_noise_span_length: float):
+    # ... (codice identico a prima)
     original_tokens = tokenizer.encode(text).ids
     n_tokens = len(original_tokens)
 
@@ -63,6 +66,9 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
 
     filtered_input_ids = [token_id for token_id in input_ids if token_id != -1]
 
+    # Aggiunge l'ultimo token <extra_id_...> alla fine del target
+    # Nota: questo potrebbe essere diverso dalla fine del source se l'ultimo token
+    # del source non era mascherato. È corretto così secondo l'implementazione di T5.
     final_extra_id_token_id = tokenizer.token_to_id(f"<extra_id_{extra_id_counter}>")
     target_spans.append(final_extra_id_token_id)
 
@@ -73,30 +79,25 @@ def t5_span_corruption(text: str, tokenizer: Tokenizer, noise_density: float, me
 
 
 def main():
-    print(f"--- Creazione del Dataset di Pre-training stile T5 ---")
+    print(f"--- Creazione del Dataset di Pre-training stile T5 (Approccio Puro) ---")
 
     if not os.path.exists(TOKENIZER_PATH):
-        print(f"ERRORE: Tokenizer non trovato in '{TOKENIZER_PATH}'. Esegui prima lo script del tokenizer.")
+        print(f"ERRORE: Tokenizer non trovato in '{TOKENIZER_PATH}'.")
         return
     print(f"1/4 - Caricamento del tokenizer da '{TOKENIZER_PATH}'...")
     tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
 
-    print(f"2/4 - Lettura del corpus di origine da '{INPUT_DATA_DIR}'...")
-    source_file = os.path.join(INPUT_DATA_DIR, "train.source")
-    target_file = os.path.join(INPUT_DATA_DIR, "train.target")
-
-    if not os.path.exists(source_file) or not os.path.exists(target_file):
-        print(f"ERRORE: File del corpus non trovati in '{INPUT_DATA_DIR}'. Esegui prima lo script di preprocessing.")
+    # --- MODIFICA 2: CAMBIA LA LOGICA DI LETTURA ---
+    print(f"2/4 - Lettura del corpus di origine puro da '{INPUT_CORPUS_FILE}'...")
+    if not os.path.exists(INPUT_CORPUS_FILE):
+        print(f"ERRORE: File del corpus puro non trovato. Esegui prima 'create_pretrain_corpus.py'.")
         return
 
-    corpus_lines = []
-    with open(source_file, 'r', encoding='utf-8') as f:
-        corpus_lines.extend(f.readlines())
-    with open(target_file, 'r', encoding='utf-8') as f:
-        corpus_lines.extend(f.readlines())
+    with open(INPUT_CORPUS_FILE, 'r', encoding='utf-8') as f:
+        corpus_lines = f.readlines()
 
     corpus_lines = [line.strip() for line in corpus_lines if line.strip()]
-    print(f"Trovate {len(corpus_lines)} righe totali nel corpus.")
+    print(f"Trovate {len(corpus_lines)} righe totali nel corpus puro.")
 
     print("3/4 - Applicazione dello Span Corruption a ogni riga del corpus...")
     corrupted_examples = []
@@ -107,6 +108,7 @@ def main():
         if corrupted_input and target:
             corrupted_examples.append({"input": corrupted_input, "output": target})
 
+    # ... (Il resto dello script, da "4/4 - Salvataggio...", rimane INVARIATO) ...
     print(f"4/4 - Salvataggio del nuovo dataset in '{OUTPUT_DIR}'...")
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)

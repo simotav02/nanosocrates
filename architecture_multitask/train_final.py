@@ -1,4 +1,4 @@
-# train_final.py (Versione a 2 Fasi, Testa Singola)
+# train_final.py (Versione Finale Completa - Correzione .project)
 
 import torch
 import torch.nn as nn
@@ -17,11 +17,11 @@ from collections import defaultdict, Counter
 from torch.utils.tensorboard import SummaryWriter
 
 from model_lib import build_transformer
-from config_pretrain import get_pretrain_config, get_finetune_config  # Rimuovi get_task_adapt_config
+from config_pretrain import get_pretrain_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 
-# --- FUNZIONI DI UTILITY (decodifica, parse) ---
+# --- FUNZIONI DI UTILITY (DECODIFICA E PARSING) ---
 
 def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repetition_penalty: float = 1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
@@ -31,7 +31,8 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repeti
     while decoder_input.size(1) < max_len:
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
-        logits = model.project(out[:, -1])
+        # --- CORREZIONE ---
+        logits = model.projection_layer(out[:, -1])
         if repetition_penalty != 1.0:
             for token_id in set(decoder_input[0].tolist()):
                 if logits[0, token_id] > 0:
@@ -61,7 +62,8 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
             has_active_beams = True
             decoder_mask = (candidate_seq == pad_idx).to(device)
             out = model.decode(encoder_output, source_mask, candidate_seq, decoder_mask)
-            logits = model.project(out[:, -1])
+            # --- CORREZIONE ---
+            logits = model.projection_layer(out[:, -1])
             if repetition_penalty != 1.0:
                 for token_id in set(candidate_seq[0].tolist()):
                     if logits[0, token_id] > 0:
@@ -118,7 +120,8 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 label = batch['label'].to(device)
                 encoder_output = model.encode(encoder_input, encoder_mask)
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-                proj_output = model.project(decoder_output)
+                # --- CORREZIONE ---
+                proj_output = model.projection_layer(decoder_output)
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
                 total_val_loss += loss.item()
                 _, predicted_tokens = torch.max(proj_output, dim=-1)
@@ -162,7 +165,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             else:
                 model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device)
 
-            # Calcolo per Token-level F1
             pred_tokens, true_tokens = model_out_tokens, label.squeeze(0)
             pred_len, true_len = pred_tokens.size(0), true_tokens.size(0)
             max_len_comp = max(pred_len, true_len)
@@ -189,7 +191,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             if "RDF2Text" in source_text:
                 rdf2text_preds.append(model_out_text_clean or ".");
                 rdf2text_labels.append([target_text])
-            else:  # Per tutti i task strutturati
+            else:
                 if current_task_name in ["Text2RDF", "CONTINUERDF"]:
                     predicted_triples_strict = parse_rdf_triples_for_strict_eval(model_out_text_raw)
                     true_triples_strict = parse_rdf_triples_for_strict_eval(target_text)
@@ -213,7 +215,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                     mlm_total += 1
                     if model_out_text_clean.lower() == target_text.strip().lower(): mlm_correct += 1
 
-    # --- STAMPA DELLE METRICHE ---
     print(f"\n" + "=" * 80 + f"\nRiepilogo task trovati nel validation set: {dict(task_counter)}")
     if (token_tp + token_fp > 0) or (token_tp + token_fn > 0):
         token_precision = token_tp / (token_tp + token_fp) if (token_tp + token_fp) > 0 else 0
@@ -296,7 +297,7 @@ def get_ds(config, phase: str):
             train_raw.extend(items[:split_point]);
             val_raw.extend(items[split_point:])
             print(f"Categoria '{cat}': {len(items[:split_point])} train / {len(items[split_point:])} val")
-    else:  # Pre-training
+    else:
         print(f"\n--- Esecuzione dello Split Casuale Semplice per {phase.capitalize()} (90/10) ---")
         random.shuffle(raw_ds);
         split_point = int(0.9 * len(raw_ds));
@@ -319,7 +320,6 @@ def train_model(config, phase: str):
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
     train_dataloader, val_dataloader, tokenizer = get_ds(config, phase)
 
-    # Il modello ha sempre una testa singola in questa versione
     model_config = {k: v for k, v in config.items() if k in ["d_model", "N", "h", "dropout", "d_ff", "seq_len"]}
     model = build_transformer(vocab_size=tokenizer.get_vocab_size(), multi_head=False, **model_config).to(device)
     writer = SummaryWriter(config['experiment_name'])
@@ -334,11 +334,11 @@ def train_model(config, phase: str):
             print(f"Preloading model {preload_path}")
             state = torch.load(preload_path, map_location=device)
             model.load_state_dict(state['model_state_dict'])
-            # Se stiamo iniziando una nuova fase, resettiamo epoca e step
-            if phase == 'finetune' and 'pretrain' in preload_path:
+            is_new_phase = (phase == 'finetune' and 'pretrain' in preload_path)
+            if is_new_phase:
                 print("Inizio nuova fase (finetune): contatori resettati.")
                 initial_epoch, global_step = 0, 0
-            else:  # Altrimenti continuiamo da dove eravamo rimasti
+            else:
                 print("Continuazione di un training interrotto.")
                 initial_epoch = state.get('epoch', -1) + 1
                 global_step = state.get('global_step', 0)
@@ -362,7 +362,8 @@ def train_model(config, phase: str):
 
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-            proj_output = model.project(decoder_output)
+            # --- CORREZIONE ---
+            proj_output = model.projection_layer(decoder_output)
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
 
             loss.backward()
@@ -382,7 +383,6 @@ def train_model(config, phase: str):
 
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
-            # Usiamo 'greedy' per la validazione intermedia del fine-tuning, è più veloce
             val_decode_strategy = 'greedy' if phase == 'finetune' else 'loss'
             num_val_examples = config['num_validation_examples'] if phase == 'finetune' else -1
             run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
@@ -405,10 +405,10 @@ if __name__ == '__main__':
     warnings.filterwarnings("ignore");
     os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
     parser = argparse.ArgumentParser(description='Train the NanoSocrates model in phases.');
-    parser.add_argument('--phase', type=str, required=True, choices=['pretrain', 'finetune'])  # Rimuovi 'task_adapt'
+    parser.add_argument('--phase', type=str, required=True, choices=['pretrain', 'finetune'])
     args = parser.parse_args()
     if args.phase == 'pretrain':
         config = get_pretrain_config()
     else:
-        config = get_finetune_config()  # Solo due opzioni
+        config = get_finetune_config()
     train_model(config, args.phase)

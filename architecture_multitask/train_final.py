@@ -1,4 +1,4 @@
-# train_final.py (Script Unico - Versione Definitiva Corretta)
+# train_final.py (Script Unico - Versione Definitiva Corretta v2)
 
 import torch
 import torch.nn as nn
@@ -256,9 +256,18 @@ def get_ds(config, phase: str):
                 (task for task in ["RDF2Text", "Text2RDF", "CONTINUERDF", "MLM"] if f"<{task}>" in item['source']),
                 "Unknown")
 
-        grouped_ds = defaultdict(list);
-        [grouped_ds[get_task_category(item)].append(item) for item in raw_ds]
-        train_raw, val_raw = [], [];
+        grouped_ds = defaultdict(list)
+        for item in raw_ds: grouped_ds[get_task_category(item)].append(item)
+        if "Unknown" in grouped_ds:
+            unknown_count = len(grouped_ds["Unknown"]);
+            total_count = len(raw_ds);
+            percentage = (unknown_count / total_count) * 100
+            print(
+                "\n" + "=" * 80 + f"\nATTENZIONE: Trovati {unknown_count} esempi ({percentage:.2f}%) con un task non riconosciuto ('Unknown').\n" + "Questo indica un grave problema di disallineamento tra i dati e il codice di preprocessing." + "\n" + "=" * 80 + "\n")
+            if percentage > 1.0: raise ValueError(
+                "La percentuale di dati 'Unknown' è troppo alta. Interruzione del training. Rigenerare i dati con gli script corretti.")
+            del grouped_ds["Unknown"]
+        train_raw, val_raw = [], []
         for cat, items in sorted(grouped_ds.items()):
             random.shuffle(items);
             split_point = int(0.9 * len(items));
@@ -285,12 +294,23 @@ def train_model(config, phase: str):
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"--- INIZIO FASE: {phase.upper()} ---\nUsing device: {device}")
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
+
     train_dataloader, val_dataloader, tokenizer = get_ds(config, phase)
+
     is_multi_head = (phase == 'task_adapt' or phase == 'finetune')
     model_config = {k: v for k, v in config.items() if k in ["d_model", "N", "h", "dropout", "d_ff", "seq_len"]}
     model = build_transformer(vocab_size=tokenizer.get_vocab_size(), multi_head=is_multi_head, **model_config).to(
         device)
+
+    # RIGA MANCANTE REINSERITA QUI
+    writer = SummaryWriter(config['experiment_name'])
+
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], eps=1e-9,
+                                  weight_decay=0.01)
+
     initial_epoch, global_step = 0, 0
+
+    # LOGICA DI PRELOADING CORRETTA E CENTRALIZZATA
     if config.get('preload'):
         preload_path = config['preload']
         if not os.path.exists(preload_path):
@@ -298,20 +318,15 @@ def train_model(config, phase: str):
         else:
             print(f"Preloading model {preload_path}")
             state = torch.load(preload_path, map_location=device)
-            is_new_phase = (phase == 'task_adapt' and 'pretrain' in preload_path) or (
-                        phase == 'finetune' and 'task_adapt' in preload_path)
+            is_new_phase = (phase == 'task_adapt' and 'pretrain' in preload_path) or \
+                           (phase == 'finetune' and 'task_adapt' in preload_path)
 
-            # --- NUOVA LOGICA DI CARICAMENTO E INIZIALIZZAZIONE ---
             if is_new_phase and phase == 'task_adapt':
                 print("Passaggio da Pre-train a Task-Adapt: inizializzazione delle teste specializzate.")
                 pretrained_weights = state['model_state_dict']
                 model_dict = model.state_dict()
-
-                # 1. Copia i pesi del corpo del modello (tutto tranne la testa di proiezione)
                 body_weights = {k: v for k, v in pretrained_weights.items() if "projection_layer" not in k}
                 model_dict.update(body_weights)
-
-                # 2. Usa i pesi della testa pre-addestrata per inizializzare ENTRAMBE le nuove teste
                 if 'projection_layer.weight' in pretrained_weights:
                     print("Inizializzazione di entrambe le teste con i pesi pre-addestrati.")
                     model_dict['structured_projection_layer.weight'].copy_(
@@ -324,32 +339,29 @@ def train_model(config, phase: str):
                             pretrained_weights['projection_layer.bias'])
                         model_dict['natural_language_projection_layer.bias'].copy_(
                             pretrained_weights['projection_layer.bias'])
-
                 model.load_state_dict(model_dict)
                 print("Corpo e teste inizializzate correttamente.")
-
-            else:  # Caricamento standard per fine-tuning o continuazione
+            else:
                 model.load_state_dict(state['model_state_dict'])
 
             if is_new_phase:
                 initial_epoch, global_step = 0, 0
             else:
-                initial_epoch = state.get('epoch', -1) + 1; global_step = state.get('global_step', 0)
+                initial_epoch = state.get('epoch', -1) + 1
+                global_step = state.get('global_step', 0)
+                if 'optimizer_state_dict' in state:
+                    print("Caricamento dello stato dell'ottimizzatore.")
+                    optimizer.load_state_dict(state['optimizer_state_dict'])
+
             print(f"Il training parte dall'epoca {initial_epoch}")
 
-    # --- LOGICA DI CONGELAMENTO PER TASK-ADAPTATION ---
     if phase == 'task_adapt':
         print("Fase di Task-Adapt: Congelamento della testa per il linguaggio naturale.")
         for param in model.natural_language_projection_layer.parameters():
             param.requires_grad = False
-
-    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], eps=1e-9,
-                                  weight_decay=0.01)
-
-    if not is_new_phase and config.get('preload') and 'optimizer_state_dict' in torch.load(config['preload'],
-                                                                                           map_location=device):
-        print("Caricamento dello stato dell'ottimizzatore.")
-        optimizer.load_state_dict(torch.load(config['preload'], map_location=device)['optimizer_state_dict'])
+        # Ricrea l'ottimizzatore per assicurarti che gestisca solo i parametri non congelati
+        optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], eps=1e-9,
+                                      weight_decay=0.01)
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
@@ -370,7 +382,7 @@ def train_model(config, phase: str):
                 task_types = [get_task_type(src, phase) for src in batch['src_text']]
                 structured_indices = [i for i, t in enumerate(task_types) if t == 'structured']
                 nl_indices = [i for i, t in enumerate(task_types) if t == 'natural_language']
-                total_loss = 0
+                total_loss = torch.tensor(0.0, device=device)
                 if structured_indices:
                     logits = get_projection_layer(model, 'structured')(decoder_output[structured_indices])
                     total_loss += loss_fn(logits.view(-1, tokenizer.get_vocab_size()),
@@ -378,7 +390,7 @@ def train_model(config, phase: str):
                 if nl_indices:
                     logits = get_projection_layer(model, 'natural_language')(decoder_output[nl_indices])
                     total_loss += loss_fn(logits.view(-1, tokenizer.get_vocab_size()), label[nl_indices].view(-1))
-                loss = total_loss if (structured_indices or nl_indices) else torch.tensor(0.0)
+                loss = total_loss
             else:
                 task_type = 'structured' if phase == 'task_adapt' else 'shared'
                 proj_output = get_projection_layer(model, task_type)(decoder_output)
@@ -393,8 +405,10 @@ def train_model(config, phase: str):
         scheduler.step()
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
+            val_decode_strategy = 'sampling' if phase == 'finetune' else 'loss'
+            num_val_examples = config['num_validation_examples'] if phase == 'finetune' else -1
             run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
-                           config['num_validation_examples'], 'sampling', phase)
+                           num_val_examples, val_decode_strategy, phase)
             torch.save(
                 {'epoch': epoch, 'model_state_dict': model.state_dict(), 'optimizer_state_dict': optimizer.state_dict(),
                  'global_step': global_step}, f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt")

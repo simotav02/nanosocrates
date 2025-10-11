@@ -5,7 +5,7 @@ import os
 import re
 from collections import defaultdict, Counter
 
-INPUT_JSON_FILE = "film_dataset_5000_cleaned.json"
+INPUT_JSON_FILE = "film_dataset_10000_cleaned.json"
 OUTPUT_DIR = "training_data_cleaned"
 
 SOT_TOKEN = "<SOT>";

@@ -1,0 +1,122 @@
+from pathlib import Path
+
+def get_base_config():
+    """
+    Configurazione 'NANO' per combattere l'overfitting.
+    """
+    return {
+        "batch_size": 16,
+        "seq_len": 256,
+        "d_model": 256,
+        "N": 2,
+        "h": 4,
+        "d_ff": 1024,
+        "dropout": 0.3,
+        "num_validation_examples": 500,
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
+    }
+
+def get_pretrain_config():
+    """Configurazione per la fase di PRE-TRAINING con Span Corruption."""
+    config = get_base_config()
+    config.update({
+        "num_epochs": 50,
+        "lr": 1e-4,
+        "validate_every_n_epochs": 2,
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data",
+        "model_folder": "weights_pretrain_unified",
+        "model_basename": "nanosocrates_unified_pretrained_",
+        "experiment_name": "runs/nanosocrates_unified_pretrain",
+        "preload": None,
+        "loss_label_smoothing": 0.0,
+    })
+    return config
+
+def get_finetune_config():
+    """Configurazione per la fase di FINE-TUNING sui 4 task specifici."""
+    config = get_base_config()
+    config['dropout'] = 0.25
+    config.update({
+        "num_epochs": 25,
+        "lr": 3e-5,
+        "validate_every_n_epochs": 1,
+        "data_dir": "../dataset/training_data_cleaned",
+        "model_folder": "weights_finetuned_unified",
+        "model_basename": "nanosocrates_unified_finetuned_",
+        "experiment_name": "runs/nanosocrates_unified_finetune",
+        "preload": "weights_pretrain_unified/nanosocrates_unified_pretrained_XX.pt",
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+
+--- INIZIO FASE: PRETRAIN ---
+Using device: mps
+
+--- Esecuzione dello Split Casuale Semplice per Pretrain (90/10) ---
+Totale: 8236 esempi di training, 916 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,096,256 parametri.
+Processing Epoch 00: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:18<00:00,  2.00it/s, loss=4.289]
+--- Epoch 00 finished. Average Training Loss: 5.7485 ---
+Processing Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=3.360]
+--- Epoch 01 finished. Average Training Loss: 3.7462 ---
+
+--- Running validation for Epoch 01 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 58/58 [00:05<00:00, 10.90it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.4923
+Token-level Accuracy: 0.4630
+
+Processing Epoch 02: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:16<00:00,  2.00it/s, loss=3.534]
+--- Epoch 02 finished. Average Training Loss: 3.3080 ---
+Processing Epoch 03: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=3.287]
+--- Epoch 03 finished. Average Training Loss: 3.1391 ---
+
+--- Running validation for Epoch 03 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 58/58 [00:05<00:00, 11.35it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2655
+Token-level Accuracy: 0.5066
+
+Processing Epoch 04: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=2.923]
+--- Epoch 04 finished. Average Training Loss: 3.0467 ---
+Processing Epoch 05: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:16<00:00,  2.01it/s, loss=2.778]
+--- Epoch 05 finished. Average Training Loss: 2.9902 ---
+
+--- Running validation for Epoch 05 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 58/58 [00:05<00:00, 11.52it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2265
+Token-level Accuracy: 0.5171
+
+Processing Epoch 06: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:16<00:00,  2.01it/s, loss=2.745]
+--- Epoch 06 finished. Average Training Loss: 2.9531 ---
+Processing Epoch 07: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=2.780]
+--- Epoch 07 finished. Average Training Loss: 2.9284 ---
+
+--- Running validation for Epoch 07 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 58/58 [00:05<00:00, 11.47it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2341
+Token-level Accuracy: 0.5165
+
+Processing Epoch 08: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:16<00:00,  2.00it/s, loss=3.294]
+--- Epoch 08 finished. Average Training Loss: 2.9139 ---
+Processing Epoch 09: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=2.843]
+--- Epoch 09 finished. Average Training Loss: 2.9076 ---
+
+--- Running validation for Epoch 09 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 58/58 [00:05<00:00, 11.48it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2361
+Token-level Accuracy: 0.5152
+
+Processing Epoch 10: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 515/515 [04:17<00:00,  2.00it/s, loss=2.860]
+--- Epoch 10 finished. Average Training Loss: 2.9100 ---

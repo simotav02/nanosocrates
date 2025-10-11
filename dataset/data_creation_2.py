@@ -5,8 +5,8 @@ import time
 from tqdm import tqdm
 
 DBPEDIA_SPARQL_ENDPOINT = "https://dbpedia.org/sparql"
-FILM_LIMIT = 5000
-PAGE_SIZE = 500
+FILM_LIMIT = 10000
+PAGE_SIZE = 1000
 OUTPUT_FILE = f"film_dataset_{FILM_LIMIT}_cleaned.json"
 
 PREFIX_MAP = {

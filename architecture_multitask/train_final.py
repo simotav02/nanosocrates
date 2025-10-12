@@ -17,6 +17,7 @@ from collections import defaultdict, Counter
 from torch.utils.tensorboard import SummaryWriter
 from transformers import get_linear_schedule_with_warmup
 
+
 from model_lib import build_transformer
 from config_pretrain import get_pretrain_config, get_finetune_config
 from dataset_lib import NanoSocratesDataset
@@ -133,14 +134,10 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 if i < num_qualitative_examples:
                     source_text = batch["src_text"][0]
                     target_text = batch["tgt_text"][0]
-
-                    # Usa il valore di repetition_penalty passato tramite il dizionario
                     repetition_penalty = decode_strategy_info.get('repetition_penalty', 1.2)
-
                     model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device,
                                                      repetition_penalty=repetition_penalty)
                     predicted_text = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=False)
-
                     qualitative_examples.append({
                         "source": source_text,
                         "target": target_text,
@@ -166,14 +163,115 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             writer.add_scalar(f'validation/{phase}/loss', avg_val_loss, global_step)
             writer.add_scalar(f'validation/{phase}/token_accuracy', token_accuracy, global_step)
 
-        model.train()
-        return
-    # ... (la tua logica per il finetune rimane qui, non la tocco)
+
+    elif phase == 'finetune':
+        source_texts, expected, predicted = [], [], []
+
+        bleu_metric = evaluate.load('bleu')
+        rouge_metric = evaluate.load('rouge')
+        meteor_metric = evaluate.load('meteor')
+
+        count = 0
+        desc = f"Validating Finetune ({decode_strategy_info.get('strategy', 'greedy').capitalize()})"
+        with torch.no_grad():
+            for batch in tqdm(validation_ds, desc=desc):
+                count += 1
+                if num_examples_to_run > 0 and count > num_examples_to_run: break
+
+                encoder_input = batch['encoder_input'].to(device)
+                encoder_mask = batch['encoder_mask'].to(device)
+                source_text = batch['src_text'][0]
+                target_text = batch['tgt_text'][0]
+
+                strategy = decode_strategy_info.get('strategy', 'greedy')
+                repetition_penalty = decode_strategy_info.get('repetition_penalty', 1.2)
+
+                if strategy == 'beam':
+                    beam_size = decode_strategy_info.get('beam_size', 4)
+                    model_out_tokens = beam_search_decode(model, beam_size, encoder_input, encoder_mask, tokenizer,
+                                                          max_len, device, repetition_penalty)
+                else:
+                    model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device,
+                                                     repetition_penalty)
+
+                predicted_text = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=True)
+
+                source_texts.append(source_text)
+                expected.append(target_text)
+                predicted.append(predicted_text)
+
+        tasks = ["Text2RDF", "RDF2Text", "CONTINUERDF", "MLM"]
+        task_metrics = {task: defaultdict(list) for task in tasks}
+        qualitative_examples_by_task = {task: [] for task in tasks}
+        num_qualitative_per_task = 2
+
+        for src, exp, pred in zip(source_texts, expected, predicted):
+            task_name = next((task for task in tasks if f"<{task}>" in src), "Unknown")
+            if task_name != "Unknown":
+                task_metrics[task_name]['expected'].append(exp)
+                task_metrics[task_name]['predicted'].append(pred)
+                if len(qualitative_examples_by_task[task_name]) < num_qualitative_per_task:
+                    qualitative_examples_by_task[task_name].append({"source": src, "expected": exp, "predicted": pred})
+
+        print("\n" + "=" * 50 + "\n--- METRICHE DI VALIDAZIONE FINETUNE ---\n" + "=" * 50)
+        for task, data in task_metrics.items():
+            if not data['expected']: continue
+
+            print(f"\n--- Task: {task} ({len(data['expected'])} esempi) ---")
+
+            if task == "RDF2Text":
+                bleu = bleu_metric.compute(predictions=data['predicted'], references=[[e] for e in data['expected']])
+                rouge = rouge_metric.compute(predictions=data['predicted'], references=data['expected'])
+                meteor = meteor_metric.compute(predictions=data['predicted'], references=data['expected'])
+                print(f"  BLEU: {bleu['bleu']:.4f}, ROUGE-L: {rouge['rougeL']:.4f}, METEOR: {meteor['meteor']:.4f}")
+                if writer:
+                    writer.add_scalar(f'validation/{phase}/{task}/bleu', bleu['bleu'], global_step)
+                    writer.add_scalar(f'validation/{phase}/{task}/rougeL', rouge['rougeL'], global_step)
+                    writer.add_scalar(f'validation/{phase}/{task}/meteor', meteor['meteor'], global_step)
+
+            elif task in ["Text2RDF", "CONTINUERDF"]:
+                tp_s, p_s, a_s = 0, 0, 0
+                for exp, pred in zip(data['expected'], data['predicted']):
+                    exp_triples = parse_rdf_triples_for_strict_eval(exp)
+                    pred_triples = parse_rdf_triples_for_strict_eval(pred)
+                    tp_s += len(exp_triples.intersection(pred_triples))
+                    p_s += len(pred_triples)
+                    a_s += len(exp_triples)
+
+                precision = tp_s / p_s if p_s > 0 else 0
+                recall = tp_s / a_s if a_s > 0 else 0
+                f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                print(
+                    f"  Precision (Strict): {precision:.4f}, Recall (Strict): {recall:.4f}, F1-Score (Strict): {f1:.4f}")
+                if writer:
+                    writer.add_scalar(f'validation/{phase}/{task}/precision', precision, global_step)
+                    writer.add_scalar(f'validation/{phase}/{task}/recall', recall, global_step)
+                    writer.add_scalar(f'validation/{phase}/{task}/f1', f1, global_step)
+
+            elif task == "MLM":
+                correct = sum(1 for exp, pred in zip(data['expected'], data['predicted']) if
+                              exp.strip().lower() == pred.strip().lower())
+                accuracy = correct / len(data['expected']) if data['expected'] else 0
+                print(f"  Accuracy (Strict): {accuracy:.4f}")
+                if writer:
+                    writer.add_scalar(f'validation/{phase}/{task}/accuracy', accuracy, global_step)
+
+        print("\n--- Esempi Qualitativi di Fine-Tuning ---")
+        for task, examples in qualitative_examples_by_task.items():
+            if not examples: continue
+            print(f"\n--- Task: {task} ---")
+            for ex in examples:
+                print(f"  SOURCE:    {ex['source']}")
+                print(f"  EXPECTED:  {ex['expected']}")
+                print(f"  PREDICTED: {ex['predicted']}")
+        print("\n" + "=" * 50)
+
+    model.train()
 
 
 def get_ds(config, phase: str):
     tokenizer = Tokenizer.from_file(str(Path(config['tokenizer_file'])))
-    source_path = os.path.join(config['data_dir'], "train.source");
+    source_path = os.path.join(config['data_dir'], "train.source")
     target_path = os.path.join(config['data_dir'], "train.target")
     if not os.path.exists(source_path): raise FileNotFoundError(
         f"File di training non trovati in {config['data_dir']}.")
@@ -188,29 +286,29 @@ def get_ds(config, phase: str):
                 (task for task in ["RDF2Text", "Text2RDF", "CONTINUERDF", "MLM"] if f"<{task}>" in item['source']),
                 "Unknown")
 
-        grouped_ds = defaultdict(list);
+        grouped_ds = defaultdict(list)
         [grouped_ds[get_task_category(item)].append(item) for item in raw_ds]
         if "Unknown" in grouped_ds:
-            unknown_count, total_count, percentage = len(grouped_ds["Unknown"]), len(raw_ds), (len(
-                grouped_ds["Unknown"]) / len(raw_ds)) * 100
+            unknown_count = len(grouped_ds["Unknown"])
+            percentage = (unknown_count / len(raw_ds)) * 100
             print(
                 "\n" + "=" * 80 + f"\nATTENZIONE: Trovati {unknown_count} esempi ({percentage:.2f}%) con un task non riconosciuto ('Unknown').\n" + "=" * 80 + "\n")
             if percentage > 1.0: raise ValueError("Percentuale di dati 'Unknown' troppo alta. Rigenerare i dati.")
             del grouped_ds["Unknown"]
-        train_raw, val_raw = [], [];
+        train_raw, val_raw = [], []
         for cat, items in sorted(grouped_ds.items()):
-            random.shuffle(items);
-            split_point = int(0.9 * len(items));
-            train_raw.extend(items[:split_point]);
+            random.shuffle(items)
+            split_point = int(0.9 * len(items))
+            train_raw.extend(items[:split_point])
             val_raw.extend(items[split_point:])
             print(f"Categoria '{cat}': {len(items[:split_point])} train / {len(items[split_point:])} val")
     else:
         print(f"\n--- Esecuzione dello Split Casuale Semplice per {phase.capitalize()} (90/10) ---")
-        random.shuffle(raw_ds);
-        split_point = int(0.9 * len(raw_ds));
+        random.shuffle(raw_ds)
+        split_point = int(0.9 * len(raw_ds))
         train_raw, val_raw = raw_ds[:split_point], raw_ds[split_point:]
 
-    random.shuffle(train_raw);
+    random.shuffle(train_raw)
     random.shuffle(val_raw)
     print(f"Totale: {len(train_raw)} esempi di training, {len(val_raw)} esempi di validazione.\n")
     train_ds = NanoSocratesDataset(train_raw, tokenizer, config['seq_len'])
@@ -221,9 +319,6 @@ def get_ds(config, phase: str):
     return train_dl, val_dl, tokenizer
 
 
-# ==============================================================================
-# ===== INIZIO SEZIONE MODIFICATA ==============================================
-# ==============================================================================
 
 def train_model(config, phase: str):
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -256,10 +351,7 @@ def train_model(config, phase: str):
                 if 'optimizer_state_dict' in state: optimizer.load_state_dict(state['optimizer_state_dict'])
             print(f"Il training parte dall'epoca {initial_epoch}")
 
-    # --- NUOVO BLOCCO SCHEDULER ---
-    # Centralizziamo la logica per renderla disponibile a entrambe le fasi.
-    # L'utente può scegliere lo scheduler dal file di configurazione.
-    scheduler_type = config.get('scheduler_type', 'cosine_restarts')  # Default al vecchio comportamento
+    scheduler_type = config.get('scheduler_type', 'cosine_restarts')
     total_steps = len(train_dataloader) * config['num_epochs']
 
     if scheduler_type == 'linear_warmup':
@@ -277,10 +369,11 @@ def train_model(config, phase: str):
         )
     else:
         raise ValueError(f"Scheduler '{scheduler_type}' non riconosciuto.")
-    # --- FINE NUOVO BLOCCO ---
 
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>'),
                                   label_smoothing=config['loss_label_smoothing']).to(device)
+
+    GRADIENT_CLIP_VALUE = 1.0
 
     for epoch in range(initial_epoch, config['num_epochs']):
         model.train()
@@ -299,13 +392,11 @@ def train_model(config, phase: str):
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
 
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP_VALUE)
             optimizer.step()
 
-            # --- MODIFICA AGGIORNAMENTO SCHEDULER ---
-            # L'aggiornamento dipende dal tipo di scheduler
             if scheduler_type == 'linear_warmup':
-                scheduler.step()  # Step-level update
-            # --- FINE MODIFICA ---
+                scheduler.step()
 
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
             writer.add_scalar(f'train_loss/step/{phase}', loss.item(), global_step)
@@ -317,19 +408,16 @@ def train_model(config, phase: str):
         writer.add_scalar(f'train_loss/epoch_avg/{phase}', avg_epoch_loss, epoch)
         writer.add_scalar(f'learning_rate/{phase}', optimizer.param_groups[0]['lr'], epoch)
 
-        # --- MODIFICA AGGIORNAMENTO SCHEDULER ---
         if scheduler_type == 'cosine_restarts':
-            scheduler.step()  # Epoch-level update
-        # --- FINE MODIFICA ---
+            scheduler.step()
 
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
 
-            # Un dizionario per passare le strategie di decodifica, più pulito
             decode_strategy_info = {}
             if phase == 'finetune':
-                decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}  # Esempio per finetune
-            else:  # pretrain
+                decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}
+            else:
                 decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}
 
             num_val_examples = config['num_validation_examples'] if phase == 'finetune' else -1
@@ -346,16 +434,10 @@ def train_model(config, phase: str):
     if phase == 'finetune':
         print("\n--- RUNNING FINAL EVALUATION WITH BEAM SEARCH ---")
         final_writer = SummaryWriter(config['experiment_name'] + "_final_beam_eval")
-        # Esempio di come passare i parametri per beam search
         beam_decode_info = {'strategy': 'beam', 'beam_size': 4, 'repetition_penalty': 1.2}
         run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, final_writer, -1,
                        beam_decode_info, phase)
         final_writer.close()
-
-
-# ==============================================================================
-# ===== FINE SEZIONE MODIFICATA ================================================
-# ==============================================================================
 
 
 if __name__ == '__main__':

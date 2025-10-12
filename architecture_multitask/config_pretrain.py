@@ -1,5 +1,3 @@
-# config_pretrain.py (Versione a 2 Fasi con opzione "Micro")
-
 from pathlib import Path
 
 
@@ -14,7 +12,7 @@ def get_nano_config():
         "d_model": 256,
         "N": 2,
         "h": 4,
-        "d_ff": 1024,  # 4 * d_model
+        "d_ff": 1024,
         "dropout": 0.3,
         "num_validation_examples": 500,
         "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
@@ -28,70 +26,59 @@ def get_micro_config():
     d_model=128, d_ff=512.
     """
     return {
-        "batch_size": 32,  # Aumentato perché il modello è più leggero e occupa meno memoria
+        "batch_size": 32,
         "seq_len": 256,
-        "d_model": 128,  # Ridotto da 256
-        "N": 2,  # Mantenuto a 2 (minimo ragionevole)
-        "h": 4,  # Mantenuto a 4 (dim_head = 128/4 = 32, è un buon valore)
-        "d_ff": 512,  # Ridotto da 1024 (4 * 128)
-        "dropout": 0.3,  # Mantenuto alto per regolarizzazione
-        "num_validation_examples": 500,
+        "d_model": 128,
+        "N": 2,
+        "h": 4,
+        "d_ff": 512,
+        "dropout": 0.3,
+        "num_validation_examples": -1,
         "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
     }
 
 
-# in config_pretrain.py
-
 def get_pretrain_config():
     """Configurazione per la fase di PRE-TRAINING con Span Corruption."""
 
-    config = get_micro_config()
+    config = get_nano_config()
 
     config.update({
-        "num_epochs": 40,  # Estendiamo il training di 15 epoche partendo da ~25
-        "lr": 5e-5,  # Riduciamo il learning rate come pianificato
+        "num_epochs": 60,
+        "lr": 1e-4,
         "validate_every_n_epochs": 2,
-        "data_dir": "../dataset_pretrain/pretrain_t5_style_data",
-        "model_folder": "weights_pretrain_micro_2_linear",  # Nuova cartella per non confondere i modelli
-        "model_basename": "nanosocrates_micro_pretrained_linear_",
-        "experiment_name": "runs/nanosocrates_micro_pretrain_2_linear",
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
+        "model_folder": "weights_pretrain_nano_10_data",
+        "model_basename": "nanosocrates_nano_10_data_pretrained_",
+        "experiment_name": "runs/nanosocrates_nano_10_data_pretrain",
 
-        # --- MODIFICHE CHIAVE ---
-        "preload": "weights_pretrain_micro_2/nanosocrates_micro_pretrained_23.pt",  # Carica il tuo checkpoint migliore
-        "scheduler_type": "linear_warmup",  # Specifica il nuovo scheduler
-        "warmup_percentage": 0.1,  # Percentuale di step totali per il warmup (standard)
-        # --- FINE MODIFICHE ---
+        "preload": None,
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
 
         "loss_label_smoothing": 0.0,
     })
     return config
 
 
-# in config_pretrain.py
-
 def get_finetune_config():
     """Configurazione per la fase di FINE-TUNING sui 4 task specifici."""
 
-    # ... (scegli la config nano o micro)
     config = get_micro_config()
-    config['dropout'] = 0.25
+    config['dropout'] = 0.15
 
     config.update({
         "num_epochs": 25,
-        "lr": 2e-5,
+        "lr": 3e-5,
         "validate_every_n_epochs": 5,
         "data_dir": "../dataset/training_data_cleaned",
         "model_folder": "weights_finetuned_micro",
         "model_basename": "nanosocrates_micro_finetuned_",
         "experiment_name": "runs/nanosocrates_micro_finetune",
+        "preload": "weights_pretrain_micro_hq_data/nanosocrates_micro_hq_data_pretrained_45.pt",
 
-        # Aggiorna il preload con il percorso della cartella del pre-training che deciderai di usare alla fine
-        "preload": "weights_pretrain_micro_2/nanosocrates_micro_pretrained_27.pt",
-
-        # --- MODIFICA PER COERENZA ---
-        "scheduler_type": "linear_warmup",
+        "scheduler_type": "cosine_restarts",
         "warmup_percentage": 0.1,
-        # --- FINE MODIFICA ---
 
         "loss_label_smoothing": 0.1,
     })

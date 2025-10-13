@@ -1,0 +1,861 @@
+from pathlib import Path
+
+
+def get_nano_config():
+    """
+    Configurazione 'NANO' originale (20M params).
+    Buona per un dataset di medie dimensioni.
+    """
+    return {
+        "batch_size": 16,
+        "seq_len": 256,
+        "d_model": 256,
+        "N": 2,
+        "h": 4,
+        "d_ff": 1024,
+        "dropout": 0.3,
+        "num_validation_examples": -1,
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
+    }
+
+
+def get_micro_config():
+    """
+    Configurazione 'MICRO' ancora più piccola per combattere l'overfitting
+    su dataset ridotti.
+    d_model=128, d_ff=512.
+    """
+    return {
+        "batch_size": 32,
+        "seq_len": 256,
+        "d_model": 128,
+        "N": 2,
+        "h": 4,
+        "d_ff": 512,
+        "dropout": 0.3,
+        "num_validation_examples": -1,
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
+    }
+
+
+def get_pretrain_config():
+    """Configurazione per la fase di PRE-TRAINING con Span Corruption."""
+
+    config = get_nano_config()
+
+    config.update({
+        "num_epochs": 60,
+        "lr": 1e-4,
+        "validate_every_n_epochs": 2,
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
+        "model_folder": "weights_pretrain_nano_10k_data",
+        "model_basename": "nanosocrates_nano_10k_data_pretrained_",
+        "experiment_name": "runs/nanosocrates_nano_10k_data_pretrain",
+
+        "preload": None,
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "loss_label_smoothing": 0.0,
+    })
+    return config
+
+
+# --- NUOVA FASE 2: DECODER TUNING ---
+def get_decoder_tuning_config():
+    """
+    FASE 2: Adattamento del solo Decoder (Encoder CONGELATO).
+    Usa un LR medio per addestrare il decoder a interpretare le rappresentazioni dell'encoder.
+    """
+    config = get_nano_config()
+    config['dropout'] = 0.15
+
+    config.update({
+        "num_epochs": 20,
+        "lr": 5e-5,
+        "validate_every_n_epochs": 4,
+        "data_dir": "../dataset/training_data_cleaned",
+
+        "model_folder": "weights_decoder_tuned_nano",
+        "model_basename": "nanosocrates_decoder_tuned_nano_",
+        "experiment_name": "runs/nanosocrates_decoder_tune_nano",
+
+        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_07.pt",
+
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "freeze_encoder": True,
+
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+def get_full_finetune_config():
+    """
+    FASE 3: Fine-tuning completo End-to-End (Encoder SCONGELATO).
+    Usa un LR molto basso per affinare l'intero modello senza oblio catastrofico.
+    """
+    config = get_nano_config()
+    config['dropout'] = 0.1
+
+    config.update({
+        "num_epochs": 60,
+        "lr": 1e-5,
+        "validate_every_n_epochs": 3,
+        "data_dir": "../dataset/training_data_cleaned",
+
+        "model_folder": "weights_full_finetuned_nano",
+        "model_basename": "nanosocrates_full_finetuned_nano_",
+        "experiment_name": "runs/nanosocrates_full_finetune_nano",
+
+        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_19.pt",
+
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "freeze_encoder": False,
+
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+
+
+--- INIZIO FASE: PRETRAIN ---
+Using device: mps
+
+--- Esecuzione dello Split Casuale Semplice per Pretrain (90/10) ---
+Totale: 14854 esempi di training, 1651 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+Scheduler: Linear Warmup + Decay. Total steps: 55740, Warmup steps: 5574
+Processing Epoch 00: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:32<00:00,  2.06it/s, loss=7.803]
+--- Epoch 00 finished. Average Training Loss: 9.2985 ---
+Processing Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:31<00:00,  2.06it/s, loss=3.559]
+--- Epoch 01 finished. Average Training Loss: 5.7241 ---
+
+--- Running validation for Epoch 01 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:42<00:00, 38.90it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 4.3179
+Token-level Accuracy: 0.3792
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 02: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:13<00:00,  2.14it/s, loss=3.344]
+--- Epoch 02 finished. Average Training Loss: 3.7238 ---
+Processing Epoch 03: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:10<00:00,  2.16it/s, loss=2.225]
+--- Epoch 03 finished. Average Training Loss: 3.3002 ---
+
+--- Running validation for Epoch 03 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:23<00:00, 69.09it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.4064
+Token-level Accuracy: 0.4906
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2> <extra_id_3> <SUBJ> <extra_id_4><EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2><EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 04: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:10<00:00,  2.16it/s, loss=2.961]
+--- Epoch 04 finished. Average Training Loss: 3.0912 ---
+Processing Epoch 05: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:10<00:00,  2.16it/s, loss=3.183]
+--- Epoch 05 finished. Average Training Loss: 2.9512 ---
+
+--- Running validation for Epoch 05 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:24<00:00, 68.71it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2023
+Token-level Accuracy: 0.5048
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> the <extra_id_2> and <extra_id_3> of <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:All_(film) <PRED> <extra_id_1> dbo:starring <extra_id_2> <extra_id_3> <extra_id_4><EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2><EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> the <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 06: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:11<00:00,  2.15it/s, loss=2.222]
+--- Epoch 06 finished. Average Training Loss: 2.8328 ---
+Processing Epoch 07: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:12<00:00,  2.15it/s, loss=2.057]
+--- Epoch 07 finished. Average Training Loss: 2.7326 ---
+
+--- Running validation for Epoch 07 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:30<00:00, 53.52it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.1242
+Token-level Accuracy: 0.5324
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> and <extra_id_2> the <extra_id_3> in <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:American_(film) <PRED> dbo:director <OBJ> <extra_id_1> <SUBJ> <extra_id_2> <extra_id_3> <extra_id_4><EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film was <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_the_in_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 08: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:11<00:00,  2.16it/s, loss=1.802]
+--- Epoch 08 finished. Average Training Loss: 2.6367 ---
+Processing Epoch 09: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:10<00:00,  2.16it/s, loss=2.745]
+--- Epoch 09 finished. Average Training Loss: 2.5436 ---
+
+--- Running validation for Epoch 09 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:25<00:00, 65.87it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.0694
+Token-level Accuracy: 0.5582
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film was <extra_id_2> The film <extra_id_3> of the <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:Malayalam_(film) <PRED> dbo:director <OBJ> <extra_id_1> <EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> by <extra_id_1> the film was released on a <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_(film) <PRED> <extra_id_1> dbo:starring <OBJ> <extra_id_2><EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> the <extra_id_1> and starring <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 10: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:12<00:00,  2.15it/s, loss=3.311]
+--- Epoch 10 finished. Average Training Loss: 2.4625 ---
+Processing Epoch 11: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:11<00:00,  2.15it/s, loss=2.519]
+--- Epoch 11 finished. Average Training Loss: 2.3871 ---
+
+--- Running validation for Epoch 11 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:24<00:00, 66.98it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.0623
+Token-level Accuracy: 0.5651
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> film directed by <extra_id_2> the <extra_id_3> of the <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:Malayalam_(film) <PRED> dbo:director <OBJ> <extra_id_1> <EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> film directed by <extra_id_1> the same <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_of_of_of_of_of_of_the_of_of_of_of_(actor) <PRED> dbo:starring <extra_id_1> <OBJ> <extra_id_2><EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> film directed by <extra_id_1> the same <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 12: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:12<00:00,  2.15it/s, loss=2.592]
+--- Epoch 12 finished. Average Training Loss: 2.3200 ---
+Processing Epoch 13: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:14<00:00,  2.14it/s, loss=2.262]
+--- Epoch 13 finished. Average Training Loss: 2.2570 ---
+
+--- Running validation for Epoch 13 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:23<00:00, 69.15it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.0903
+Token-level Accuracy: 0.5688
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film <extra_id_2> The film's <extra_id_3> of <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> dbr:Telugu_language <EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> the film, and starring <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> <EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> the film <extra_id_1> and starring <extra_id_2><EOT>
+
+========================================
+
+Processing Epoch 14: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:14<00:00,  2.14it/s, loss=3.064]
+--- Epoch 14 finished. Average Training Loss: 2.1916 ---
+Processing Epoch 15: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 929/929 [07:13<00:00,  2.14it/s, loss=2.119]
+--- Epoch 15 finished. Average Training Loss: 2.1355 ---
+
+--- Running validation for Epoch 15 ---
+Validating pretrain: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1651/1651 [00:25<00:00, 65.52it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.1419
+Token-level Accuracy: 0.5728
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    A Question of Silence (Dutch: <extra_id_0> rond Christine M.) is a 1982 <extra_id_1> drama film written and directed by Marleen Gorris. It is Gorris' debut film. It stars <extra_id_2> plot is about three women, strangers to each other, who kill a man they do not know. It was highly controversial but also highly acclaimed at the time of its release, and is <extra_id_3> as a feminist classic.
+TARGET:    <extra_id_0> De stilte <extra_id_1> Dutch <extra_id_2> as Christine M. The <extra_id_3> now hailed <extra_id_4>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> of the <extra_id_2> in <extra_id_3> the <extra_id_4><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:director <OBJ> <extra_id_0> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:musicComposer <extra_id_1> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:producer <OBJ> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> <extra_id_2> <PRED> dbo:starring <OBJ> dbr:David_Abraham_Cheulkar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Indira_Billi <EOT> <SOT> <SUBJ> <extra_id_3> <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:S._N._Tripathi <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Sanjeev_Kumar <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Tabassum_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:Veena_(actress) <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:Homi_Wadia <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> <extra_id_1> <OBJ> dbr:Usha_Khanna <extra_id_2> dbr:B._M._Vyas <EOT> <SOT> <SUBJ> dbr:Alibaba_Aur_40_Chor_(1966_film) <extra_id_3> dbr:Alibaba_Aur_40_Chor_(1966_film) <PRED> dbo:starring <OBJ> dbr:L._Vijaylakshmi <extra_id_4>
+PREDICTED: <SOT><extra_id_0> <EOT>
+
+SOURCE:    <extra_id_0> 2013 French film directed by Philippe Godeau and starring <extra_id_1> Lanners, Corinne Masiero and Juana Acosta. 11.6 premiered on 3 April 2013 in France, and on 21 April in North America, at the City of Lights, City of Angels film festival.
+TARGET:    <extra_id_0> 11.6 is a <extra_id_1> François Cluzet, Bouli <extra_id_2>
+PREDICTED: <SOT><extra_id_0> film directed by <extra_id_1> was released on the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:director <OBJ> dbr:John_'Bud'_Cardos <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:musicComposer <OBJ> dbr:Morton_Stevens <EOT> <SOT> <SUBJ> <extra_id_0> dbr:Belinda_Bauer_(actress) <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <extra_id_1> dbr:Gary_Busey <EOT> <SOT> <SUBJ> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> dbr:Ray_Sharkey <EOT>
+TARGET:    <extra_id_0> dbr:Act_of_Piracy <PRED> dbo:starring <OBJ> <extra_id_1> <OBJ> <extra_id_2>
+PREDICTED: <SOT><extra_id_0> <OBJ> dbr:John_Pictures <EOT>
+
+SOURCE:    A Boy Named Sue is a 2001 documentary film directed by Julie Wyman. It shows <extra_id_0> a transgender man who undergoes various stages of transition (including a mastectomy and hormone therapy). The protagonist is filmed extensively throughout, gives a number of interviews, and eventually settles down as a gay male. The film's title is taken from <extra_id_1> Named Sue.
+TARGET:    <extra_id_0> the life and transition of Theo, <extra_id_1> the song A Boy <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film. The film was released on <extra_id_2><EOT>
+
+========================================
+
+
+
+
+
+
+--- INIZIO FASE: DECODER_TUNE ---
+Using device: mps
+
+--- Esecuzione dello Split Stratificato per DECODER_TUNE (90/10) ---
+Categoria 'CONTINUERDF': 3748 train / 417 val
+Categoria 'MLM': 2498 train / 278 val
+Categoria 'RDF2Text': 3123 train / 348 val
+Categoria 'Text2RDF': 3123 train / 348 val
+Totale: 12492 esempi di training, 1391 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+
+--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---
+Parametri totali: 20,175,771
+Parametri allenabili: 10,366,619 (51.38%)
+
+Preloading model weights_pretrain_nano_10_data/nanosocrates_nano_10_data_pretrained_11.pt
+Inizio prima fase di fine-tuning (decoder_tune): contatori resettati.
+Il training parte dall'epoca 0
+Scheduler: Linear Warmup + Decay. Total steps: 15620, Warmup steps: 1562
+Processing Epoch 00: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.91it/s, loss=5.306]
+--- Epoch 00 finished. Average Training Loss: 5.7870 ---
+Processing Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:31<00:00,  2.88it/s, loss=3.642]
+--- Epoch 01 finished. Average Training Loss: 4.4983 ---
+Processing Epoch 02: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:30<00:00,  2.89it/s, loss=3.775]
+--- Epoch 02 finished. Average Training Loss: 4.3628 ---
+Processing Epoch 03: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.91it/s, loss=4.333]
+--- Epoch 03 finished. Average Training Loss: 4.2725 ---
+
+--- Running validation for Epoch 03 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1391/1391 [19:43<00:00,  1.18it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.1368, Recall: 0.0750, F1-Score: 0.0969
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0014, Recall: 0.0004, F1-Score: 0.0006
+  Predicates  | Precision: 0.9986, Recall: 0.2860, F1-Score: 0.4446
+  Objects     | Precision: 0.0014, Recall: 0.0004, F1-Score: 0.0006
+
+--- Metriche Task: Text2RDF (348 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (348 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0039, ROUGE-L: 0.1311, METEOR: 0.0904
+
+--- Metriche Task: CONTINUERDF (417 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (278 esempi) ---
+  Accuracy (Strict): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    51 (also known as After Dark Originals: Area 51 or Area 51) is a 2011 American horror film directed by Jason Connery and starring Bruce Boxleitner and John Shea. It is part of the After Dark Originals lineup. The film premiered on the SyFy Channel on February 26, 2011. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:director <OBJ> dbr:Jason_Connery <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:distributor <OBJ> dbr:Syfy <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:starring <OBJ> dbr:Bruce_Boxleitner <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:starring <OBJ> dbr:John_Shea <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman's_of_the_(film) <PRED> dbo:director <OBJ> dbr:John_Pictures <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:cinematography <OBJ> dbr:Carl_Berger_(cinematographer) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:director <OBJ> dbr:Seymour_Friedman <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:distributor <OBJ> dbr:Republic_Pictures <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:James_Edwards_(actor) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:John_Kellogg_(actor) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Karin_Booth <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Lawrence_Dobkin <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Myron_Healey <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Ross_Elliott <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:writer <OBJ> dbr:Arthur_Hoerl <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  African Manhunt is a 1955 American adventure film directed by Seymour Friedman and written by Arthur Hoerl. The film stars Myron Healey, Karin Booth, John Kellogg, Lawrence Dobkin, Ross Elliott and James Edwards. The film was released on January 5, 1955, by Republic Pictures. African sequences from the French documentary Congolaise were edited into the film.
+  PREDICTED: A is a American drama film directed by starring John and starring Robert, and starring Michael K. The film was released on the same name by S. It stars P.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Real_Young_Girl <PRED> dbo:starring <OBJ> dbr:Charlotte_Alexandra <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Real_Young_Girl <PRED> dbo:starring <OBJ> dbr:Hiram_Keller <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman_for_Love <PRED> dbo:starring <OBJ> dbr:John_P._(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_from_the_Boulevard_des_Capucines <MASK> <OBJ> dbr:Andrei_Mironov_(actor) <EOT> <MLM>
+  EXPECTED:  dbo:starring
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 04: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:32<00:00,  2.87it/s, loss=5.229]
+--- Epoch 04 finished. Average Training Loss: 4.2212 ---
+Processing Epoch 05: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:27<00:00,  2.92it/s, loss=3.114]
+--- Epoch 05 finished. Average Training Loss: 4.1659 ---
+Processing Epoch 06: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:26<00:00,  2.93it/s, loss=3.960]
+--- Epoch 06 finished. Average Training Loss: 4.1344 ---
+Processing Epoch 07: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.91it/s, loss=3.442]
+--- Epoch 07 finished. Average Training Loss: 4.0990 ---
+
+--- Running validation for Epoch 07 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1391/1391 [20:04<00:00,  1.15it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.1348, Recall: 0.0765, F1-Score: 0.0976
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.2426, F1-Score: 0.3905
+  Objects     | Precision: 0.0244, Recall: 0.0059, F1-Score: 0.0095
+
+--- Metriche Task: Text2RDF (348 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (348 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0118, ROUGE-L: 0.1853, METEOR: 0.1242
+
+--- Metriche Task: CONTINUERDF (417 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (278 esempi) ---
+  Accuracy (Strict): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    51 (also known as After Dark Originals: Area 51 or Area 51) is a 2011 American horror film directed by Jason Connery and starring Bruce Boxleitner and John Shea. It is part of the After Dark Originals lineup. The film premiered on the SyFy Channel on February 26, 2011. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:director <OBJ> dbr:Jason_Connery <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:distributor <OBJ> dbr:Syfy <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:starring <OBJ> dbr:Bruce_Boxleitner <EOT> <SOT> <SUBJ> dbr:51_(film) <PRED> dbo:starring <OBJ> dbr:John_Shea <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman's_of_the_Life <PRED> dbo:director <OBJ> dbr:Robert_Pictures <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:cinematography <OBJ> dbr:Carl_Berger_(cinematographer) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:director <OBJ> dbr:Seymour_Friedman <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:distributor <OBJ> dbr:Republic_Pictures <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:James_Edwards_(actor) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:John_Kellogg_(actor) <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Karin_Booth <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Lawrence_Dobkin <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Myron_Healey <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:starring <OBJ> dbr:Ross_Elliott <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> dbo:writer <OBJ> dbr:Arthur_Hoerl <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:African_Manhunt <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  African Manhunt is a 1955 American adventure film directed by Seymour Friedman and written by Arthur Hoerl. The film stars Myron Healey, Karin Booth, John Kellogg, Lawrence Dobkin, Ross Elliott and James Edwards. The film was released on January 5, 1955, by Republic Pictures. African sequences from the French documentary Congolaise were edited into the film.
+  PREDICTED: 10 (transl. The Un) is a 2015 Indian Hindi-language drama film directed by John S. It was released on the same name, and produced by Robert K. The film stars George G.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Real_Young_Girl <PRED> dbo:starring <OBJ> dbr:Charlotte_Alexandra <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Real_Young_Girl <PRED> dbo:starring <OBJ> dbr:Hiram_Keller <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman_for_Love <PRED> dbo:starring <OBJ> dbr:Robert_McT._(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_from_the_Boulevard_des_Capucines <MASK> <OBJ> dbr:Andrei_Mironov_(actor) <EOT> <MLM>
+  EXPECTED:  dbo:starring
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 08: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:32<00:00,  2.86it/s, loss=3.451]
+--- Epoch 08 finished. Average Training Loss: 4.0661 ---
+Processing Epoch 09:  57%|███████████████████████████████████████████████████████████▎                                            | 445/781 [02:31<01:44,  3.20it/s, loss=4.525]^C^CException ignored in: <function _MultiProcessingDataLoaderIter.__del__ at 0x106fb36a0>
+
+
+--- INIZIO FASE: DECODER_TUNE ---
+Using device: mps
+
+--- Esecuzione dello Split Stratificato per DECODER_TUNE (90/10) ---
+Categoria 'CONTINUERDF': 3748 train / 417 val
+Categoria 'MLM': 2498 train / 278 val
+Categoria 'RDF2Text': 3123 train / 348 val
+Categoria 'Text2RDF': 3123 train / 348 val
+Totale: 12492 esempi di training, 1391 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+
+--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---
+Parametri totali: 20,175,771
+Parametri allenabili: 10,366,619 (51.38%)
+
+Preloading model weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_07.pt
+Continuazione di un training interrotto.
+Il training parte dall'epoca 8
+Scheduler: Linear Warmup + Decay. Total steps: 15620, Warmup steps: 1562
+Processing Epoch 08: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:26<00:00,  2.94it/s, loss=5.335]
+--- Epoch 08 finished. Average Training Loss: 4.0866 ---
+Processing Epoch 09: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.91it/s, loss=4.544]
+--- Epoch 09 finished. Average Training Loss: 4.0743 ---
+Processing Epoch 10: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.91it/s, loss=4.544]
+--- Epoch 10 finished. Average Training Loss: 4.0447 ---
+Processing Epoch 11: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:28<00:00,  2.90it/s, loss=4.442]
+--- Epoch 11 finished. Average Training Loss: 4.0085 ---
+
+--- Running validation for Epoch 11 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1391/1391 [12:24<00:00,  1.87it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 0.0000
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.2035, Recall: 0.0699, F1-Score: 0.1040
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0026, Recall: 0.0008, F1-Score: 0.0012
+  Predicates  | Precision: 0.9987, Recall: 0.2884, F1-Score: 0.4475
+  Objects     | Precision: 0.0238, Recall: 0.0069, F1-Score: 0.0107
+
+--- Metriche Task: Text2RDF (348 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (348 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0038, ROUGE-L: 0.1600, METEOR: 0.1028
+
+--- Metriche Task: CONTINUERDF (417 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (278 esempi) ---
+  Accuracy (Strict): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A California Romance is a 1922 American comedy film directed by Jerome Storm and written by Charles E. Banks. The film stars John Gilbert, Estelle Taylor, George Siegmann, Jack McDonald and C.E. Anderson. The film was released on December 24, 1922, by Fox Film Corporation. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:director <OBJ> dbr:Jerome_Storm <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:distributor <OBJ> dbr:Fox_Film <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Estelle_Taylor <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:George_Siegmann <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Jack_McDonald_(actor) <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:John_Gilbert_(actor) <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman's_Life <PRED> dbo:director <OBJ> dbr:Silent_film <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:cinematography <OBJ> dbr:Rasmus_Videbæk <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:director <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:distributor <OBJ> dbr:Nordisk_Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:language <OBJ> dbr:Danish_language <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:musicComposer <OBJ> dbr:Gabriel_Yared <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Louise_Vesth <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Sisse_Graum_Jørgensen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Alicia_Vikander <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mads_Mikkelsen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mikkel_Følsgaard <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:writer <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Royal Affair (Danish: En kongelig affære) is a 2012 Danish psychological historical drama thriller film directed by Nikolaj Arcel, starring Mads Mikkelsen, Alicia Vikander and Mikkel Følsgaard. The story is set in the 18th century, at the court of the mentally ill King Christian VII of Denmark, and focuses on the romance between his wife, Caroline Matilda of Great Britain, and the royal physician Johann Friedrich Struensee. The film received two Silver Bears at the 62nd Berlin International Film Festival, and was nominated for the Academy Award for Best Foreign Language Film at the 85th Academy Awards. It was also nominated for the Best Foreign Language Film award at the 70th Golden Globe Awards.
+  PREDICTED: A Woman is a 2019 American drama film directed by John L. The film stars Robert and starring Paramount, and Michael McT. It was released on December 2016.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Carlo_Rustichelli <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Paolo_Rustichelli <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Adventures_of_the_Own <PRED> dbo:starring <OBJ> dbr:Robert_McL._(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:AmericanEast <PRED> dbo:starring <MASK> <EOT> <MLM>
+  EXPECTED:  dbr:Tay_Blessey
+  PREDICTED:   Allari(film)  starring  K.S.(actor)
+
+==================================================
+Processing Epoch 12: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:34<00:00,  2.85it/s, loss=4.138]
+--- Epoch 12 finished. Average Training Loss: 3.9828 ---
+Processing Epoch 13: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:42<00:00,  2.77it/s, loss=3.033]
+--- Epoch 13 finished. Average Training Loss: 3.9540 ---
+Processing Epoch 14: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:37<00:00,  2.82it/s, loss=3.603]
+--- Epoch 14 finished. Average Training Loss: 3.9242 ---
+Processing Epoch 15: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:38<00:00,  2.80it/s, loss=2.975]
+--- Epoch 15 finished. Average Training Loss: 3.9026 ---
+
+--- Running validation for Epoch 15 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1391/1391 [12:39<00:00,  1.83it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 0.0000
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.2121, Recall: 0.0734, F1-Score: 0.1091
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0027, Recall: 0.0008, F1-Score: 0.0012
+  Predicates  | Precision: 0.9987, Recall: 0.2857, F1-Score: 0.4443
+  Objects     | Precision: 0.0240, Recall: 0.0069, F1-Score: 0.0107
+
+--- Metriche Task: Text2RDF (348 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (348 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0061, ROUGE-L: 0.1742, METEOR: 0.1173
+
+--- Metriche Task: CONTINUERDF (417 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (278 esempi) ---
+  Accuracy (Strict): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A California Romance is a 1922 American comedy film directed by Jerome Storm and written by Charles E. Banks. The film stars John Gilbert, Estelle Taylor, George Siegmann, Jack McDonald and C.E. Anderson. The film was released on December 24, 1922, by Fox Film Corporation. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:director <OBJ> dbr:Jerome_Storm <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:distributor <OBJ> dbr:Fox_Film <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Estelle_Taylor <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:George_Siegmann <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Jack_McDonald_(actor) <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:John_Gilbert_(actor) <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Man_of_the_Life <PRED> dbo:director <OBJ> dbr:Silent_film <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:cinematography <OBJ> dbr:Rasmus_Videbæk <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:director <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:distributor <OBJ> dbr:Nordisk_Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:language <OBJ> dbr:Danish_language <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:musicComposer <OBJ> dbr:Gabriel_Yared <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Louise_Vesth <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Sisse_Graum_Jørgensen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Alicia_Vikander <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mads_Mikkelsen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mikkel_Følsgaard <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:writer <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Royal Affair (Danish: En kongelig affære) is a 2012 Danish psychological historical drama thriller film directed by Nikolaj Arcel, starring Mads Mikkelsen, Alicia Vikander and Mikkel Følsgaard. The story is set in the 18th century, at the court of the mentally ill King Christian VII of Denmark, and focuses on the romance between his wife, Caroline Matilda of Great Britain, and the royal physician Johann Friedrich Struensee. The film received two Silver Bears at the 62nd Berlin International Film Festival, and was nominated for the Academy Award for Best Foreign Language Film at the 85th Academy Awards. It was also nominated for the Best Foreign Language Film award at the 70th Golden Globe Awards.
+  PREDICTED: A Man of the Life is a 2013 American silent drama film directed by John C. It was released on December 2017, 2018, and stars Paramount Pictures.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Carlo_Rustichelli <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Paolo_Rustichelli <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Adventures_of_the_Gods_(film) <PRED> dbo:starring <OBJ> dbr:Robert_McL._S._P._(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:AmericanEast <PRED> dbo:starring <MASK> <EOT> <MLM>
+  EXPECTED:  dbr:Tay_Blessey
+  PREDICTED: K.S.V.M.
+
+==================================================
+Processing Epoch 16: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:36<00:00,  2.82it/s, loss=5.466]
+--- Epoch 16 finished. Average Training Loss: 3.8874 ---
+Processing Epoch 17: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:37<00:00,  2.82it/s, loss=3.412]
+--- Epoch 17 finished. Average Training Loss: 3.8675 ---
+Processing Epoch 18: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:36<00:00,  2.83it/s, loss=4.064]
+--- Epoch 18 finished. Average Training Loss: 3.8526 ---
+Processing Epoch 19: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 781/781 [04:37<00:00,  2.82it/s, loss=2.989]
+--- Epoch 19 finished. Average Training Loss: 3.8363 ---
+
+--- Running validation for Epoch 19 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 1391/1391 [12:52<00:00,  1.80it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 0.0000
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.2104, Recall: 0.0738, F1-Score: 0.1093
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0027, Recall: 0.0008, F1-Score: 0.0012
+  Predicates  | Precision: 0.9973, Recall: 0.2872, F1-Score: 0.4460
+  Objects     | Precision: 0.0239, Recall: 0.0069, F1-Score: 0.0107
+
+--- Metriche Task: Text2RDF (348 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (348 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0116, ROUGE-L: 0.1834, METEOR: 0.1305
+
+--- Metriche Task: CONTINUERDF (417 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (278 esempi) ---
+  Accuracy (Strict): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A California Romance is a 1922 American comedy film directed by Jerome Storm and written by Charles E. Banks. The film stars John Gilbert, Estelle Taylor, George Siegmann, Jack McDonald and C.E. Anderson. The film was released on December 24, 1922, by Fox Film Corporation. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:director <OBJ> dbr:Jerome_Storm <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:distributor <OBJ> dbr:Fox_Film <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Estelle_Taylor <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:George_Siegmann <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:Jack_McDonald_(actor) <EOT> <SOT> <SUBJ> dbr:A_California_Romance <PRED> dbo:starring <OBJ> dbr:John_Gilbert_(actor) <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman's_Life <PRED> dbo:director <OBJ> dbr:Silent_film <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:cinematography <OBJ> dbr:Rasmus_Videbæk <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:director <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:distributor <OBJ> dbr:Nordisk_Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:language <OBJ> dbr:Danish_language <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:musicComposer <OBJ> dbr:Gabriel_Yared <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Louise_Vesth <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:producer <OBJ> dbr:Sisse_Graum_Jørgensen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Alicia_Vikander <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mads_Mikkelsen <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:starring <OBJ> dbr:Mikkel_Følsgaard <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> dbo:writer <OBJ> dbr:Nikolaj_Arcel <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Royal_Affair <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Royal Affair (Danish: En kongelig affære) is a 2012 Danish psychological historical drama thriller film directed by Nikolaj Arcel, starring Mads Mikkelsen, Alicia Vikander and Mikkel Følsgaard. The story is set in the 18th century, at the court of the mentally ill King Christian VII of Denmark, and focuses on the romance between his wife, Caroline Matilda of Great Britain, and the royal physician Johann Friedrich Struensee. The film received two Silver Bears at the 62nd Berlin International Film Festival, and was nominated for the Academy Award for Best Foreign Language Film at the 85th Academy Awards. It was also nominated for the Best Foreign Language Film award at the 70th Golden Globe Awards.
+  PREDICTED: A Man of the is a 2014 American silent drama film directed by John C. The film stars Robert McMan, and William H. It was released on December 18, 2018, 2017.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Carlo_Rustichelli <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Amici_miei_–_Atto_III <PRED> dbo:musicComposer <OBJ> dbr:Paolo_Rustichelli <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Adventures_of_the_Gods <PRED> dbo:starring <OBJ> dbr:Robert_McNairy <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:AmericanEast <PRED> dbo:starring <MASK> <EOT> <MLM>
+  EXPECTED:  dbr:Tay_Blessey
+  PREDICTED: K.S.V.M.
+
+==================================================
+--- FASE DECODER_TUNE COMPLETATA ---
+
+
+
+
+

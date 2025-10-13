@@ -14,7 +14,7 @@ def get_nano_config():
         "h": 4,
         "d_ff": 1024,
         "dropout": 0.3,
-        "num_validation_examples": 500,
+        "num_validation_examples": -1,
         "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
     }
 
@@ -48,9 +48,9 @@ def get_pretrain_config():
         "lr": 1e-4,
         "validate_every_n_epochs": 2,
         "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
-        "model_folder": "weights_pretrain_nano_10_data",
-        "model_basename": "nanosocrates_nano_10_data_pretrained_",
-        "experiment_name": "runs/nanosocrates_nano_10_data_pretrain",
+        "model_folder": "weights_pretrain_nano_10k_data",
+        "model_basename": "nanosocrates_nano_10k_data_pretrained_",
+        "experiment_name": "runs/nanosocrates_nano_10k_data_pretrain",
 
         "preload": None,
         "scheduler_type": "linear_warmup",
@@ -61,24 +61,61 @@ def get_pretrain_config():
     return config
 
 
-def get_finetune_config():
-    """Configurazione per la fase di FINE-TUNING sui 4 task specifici."""
-
-    config = get_micro_config()
+# --- NUOVA FASE 2: DECODER TUNING ---
+def get_decoder_tuning_config():
+    """
+    FASE 2: Adattamento del solo Decoder (Encoder CONGELATO).
+    Usa un LR medio per addestrare il decoder a interpretare le rappresentazioni dell'encoder.
+    """
+    config = get_nano_config()
     config['dropout'] = 0.15
 
     config.update({
-        "num_epochs": 25,
-        "lr": 3e-5,
-        "validate_every_n_epochs": 5,
+        "num_epochs": 20,
+        "lr": 5e-5,
+        "validate_every_n_epochs": 4,
         "data_dir": "../dataset/training_data_cleaned",
-        "model_folder": "weights_finetuned_micro",
-        "model_basename": "nanosocrates_micro_finetuned_",
-        "experiment_name": "runs/nanosocrates_micro_finetune",
-        "preload": "weights_pretrain_micro_hq_data/nanosocrates_micro_hq_data_pretrained_45.pt",
 
-        "scheduler_type": "cosine_restarts",
+        "model_folder": "weights_decoder_tuned_nano",
+        "model_basename": "nanosocrates_decoder_tuned_nano_",
+        "experiment_name": "runs/nanosocrates_decoder_tune_nano",
+
+        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_07.pt",
+
+        "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,
+
+        "freeze_encoder": True,
+
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+def get_full_finetune_config():
+    """
+    FASE 3: Fine-tuning completo End-to-End (Encoder SCONGELATO).
+    Usa un LR molto basso per affinare l'intero modello senza oblio catastrofico.
+    """
+    config = get_nano_config()
+    config['dropout'] = 0.1
+
+    config.update({
+        "num_epochs": 60,
+        "lr": 1e-5,
+        "validate_every_n_epochs": 3,
+        "data_dir": "../dataset/training_data_cleaned",
+
+        "model_folder": "weights_full_finetuned_nano",
+        "model_basename": "nanosocrates_full_finetuned_nano_",
+        "experiment_name": "runs/nanosocrates_full_finetune_nano",
+
+        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_19.pt",
+
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "freeze_encoder": False,
 
         "loss_label_smoothing": 0.1,
     })

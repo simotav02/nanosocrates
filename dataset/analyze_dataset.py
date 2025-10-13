@@ -1,6 +1,6 @@
 import json
 
-DATASET_FILE = "film_dataset_100_final.json"
+DATASET_FILE = "film_dataset_10000_cleaned.json"
 
 WHITELISTED_PREDICATES = {
     "dbo:director", "dbo:writer", "dbo:starring", "dbo:producer",

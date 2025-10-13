@@ -1,4 +1,4 @@
-# train_final.py
+# --- START OF FILE train_final.py ---
 
 import torch
 import torch.nn as nn
@@ -17,17 +17,28 @@ from collections import defaultdict, Counter
 from torch.utils.tensorboard import SummaryWriter
 from transformers import get_linear_schedule_with_warmup
 
-
 from model_lib import build_transformer
-from config_pretrain import get_pretrain_config, get_finetune_config
+from config_pretrain import get_pretrain_config, get_decoder_tuning_config, get_full_finetune_config
 from dataset_lib import NanoSocratesDataset
 
 
-def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repetition_penalty: float = 1.2):
+# SOSTITUISCI LE VECCHIE FUNZIONI CON QUESTE DUE
+
+def greedy_decode(model, source_or_encoder_output, source_mask, tokenizer, max_len, device,
+                  repetition_penalty: float = 1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
-    encoder_output = model.encode(source, source_mask)
-    decoder_input = torch.empty(1, 1).fill_(sot_idx).type_as(source).to(device)
+
+    if isinstance(source_or_encoder_output, torch.Tensor) and source_or_encoder_output.dim() == 3:
+        encoder_output = source_or_encoder_output
+    else:
+        encoder_output = model.encode(source_or_encoder_output, source_mask)
+
+    # --- CORREZIONE CRUCIALE ---
+    # Il decoder_input deve SEMPRE essere di tipo long perché contiene indici di token.
+    # Usiamo .long() invece di .type_as()
+    decoder_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
+
     while decoder_input.size(1) < max_len:
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
@@ -39,19 +50,31 @@ def greedy_decode(model, source, source_mask, tokenizer, max_len, device, repeti
                 else:
                     logits[0, token_id] *= repetition_penalty
         _, next_word = torch.max(logits, dim=1)
-        decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)],
-                                  dim=1)
+
+        # Anche il nuovo token deve essere di tipo long
+        next_word_tensor = torch.empty(1, 1, dtype=torch.long, device=device).fill_(next_word.item())
+        decoder_input = torch.cat([decoder_input, next_word_tensor], dim=1)
+
         if next_word.item() == eot_idx: break
     return decoder_input.squeeze(0)
 
 
-def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len, device, repetition_penalty=1.2):
+def beam_search_decode(model, beam_size, source_or_encoder_output, source_mask, tokenizer, max_len, device,
+                       repetition_penalty=1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
-    encoder_output = model.encode(source, source_mask)
-    initial_input = torch.empty(1, 1).fill_(sot_idx).type_as(source).to(device)
+
+    if isinstance(source_or_encoder_output, torch.Tensor) and source_or_encoder_output.dim() == 3:
+        encoder_output = source_or_encoder_output
+    else:
+        encoder_output = model.encode(source_or_encoder_output, source_mask)
+
+    # --- CORREZIONE CRUCIALE ---
+    # Anche qui, l'input iniziale deve essere di tipo long.
+    initial_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
     beams = [(initial_input, 0.0)]
     completed_beams = []
+
     for _ in range(max_len - 1):
         new_beams, has_active_beams = [], False
         for candidate_seq, candidate_score in beams:
@@ -71,7 +94,9 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
             log_probs = torch.log_softmax(logits, dim=-1)
             topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
             for i in range(beam_size):
-                token_idx, token_log_prob = topk_idx[0, i].unsqueeze(0).unsqueeze(0), topk_log_probs[0, i].item()
+                # topk_idx è già di tipo long, quindi non serve conversione qui
+                token_idx = topk_idx[0, i].unsqueeze(0).unsqueeze(0)
+                token_log_prob = topk_log_probs[0, i].item()
                 new_seq = torch.cat([candidate_seq, token_idx], dim=1)
                 new_beams.append((new_seq, candidate_score + token_log_prob))
         if not has_active_beams: break
@@ -84,16 +109,6 @@ def beam_search_decode(model, beam_size, source, source_mask, tokenizer, max_len
     return best_beam[0].squeeze()
 
 
-def parse_rdf_triples_for_entity_eval(text: str) -> (list, list, list):
-    subjects, predicates, objects = [], [], []
-    pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
-    matches = pattern.findall(text)
-    for match in matches:
-        subj, pred, obj = (m.strip() for m in match)
-        if subj and pred and obj: subjects.append(subj); predicates.append(pred); objects.append(obj)
-    return subjects, predicates, objects
-
-
 def parse_rdf_triples_for_strict_eval(text: str) -> set:
     triples = set()
     pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
@@ -102,6 +117,16 @@ def parse_rdf_triples_for_strict_eval(text: str) -> set:
         subj, pred, obj = (m.strip() for m in match)
         if subj and pred and obj: triples.add((subj, pred, obj))
     return triples
+
+
+def parse_rdf_triples_for_entity_eval(text: str) -> (list, list, list):
+    subjects, predicates, objects = [], [], []
+    pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
+    matches = pattern.findall(text)
+    for match in matches:
+        subj, pred, obj = (m.strip() for m in match)
+        if subj and pred and obj: subjects.append(subj); predicates.append(pred); objects.append(obj)
+    return subjects, predicates, objects
 
 
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run,
@@ -135,7 +160,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                     source_text = batch["src_text"][0]
                     target_text = batch["tgt_text"][0]
                     repetition_penalty = decode_strategy_info.get('repetition_penalty', 1.2)
-                    model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device,
+                    model_out_tokens = greedy_decode(model, encoder_output, encoder_mask, tokenizer, max_len, device,
                                                      repetition_penalty=repetition_penalty)
                     predicted_text = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=False)
                     qualitative_examples.append({
@@ -163,77 +188,143 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             writer.add_scalar(f'validation/{phase}/loss', avg_val_loss, global_step)
             writer.add_scalar(f'validation/{phase}/token_accuracy', token_accuracy, global_step)
 
+    elif phase in ['decoder_tune', 'full_finetune']:
+        source_texts, expected, predicted_raw, predicted_clean = [], [], [], []
 
-    elif phase == 'finetune':
-        source_texts, expected, predicted = [], [], []
+        token_tp, token_fp, token_fn = 0, 0, 0
+        pad_id = tokenizer.token_to_id('<PAD>')
+        total_val_loss = 0
+        loss_fn = nn.CrossEntropyLoss(ignore_index=pad_id).to(device)
 
-        bleu_metric = evaluate.load('bleu')
-        rouge_metric = evaluate.load('rouge')
-        meteor_metric = evaluate.load('meteor')
-
-        count = 0
-        desc = f"Validating Finetune ({decode_strategy_info.get('strategy', 'greedy').capitalize()})"
+        desc = f"Validating {phase.replace('_', '-').capitalize()} ({decode_strategy_info.get('strategy', 'greedy').capitalize()})"
         with torch.no_grad():
             for batch in tqdm(validation_ds, desc=desc):
-                count += 1
-                if num_examples_to_run > 0 and count > num_examples_to_run: break
-
                 encoder_input = batch['encoder_input'].to(device)
                 encoder_mask = batch['encoder_mask'].to(device)
+                decoder_input = batch['decoder_input'].to(device)
+                decoder_mask = batch['decoder_mask'].to(device)
+                label = batch['label'].to(device)
                 source_text = batch['src_text'][0]
                 target_text = batch['tgt_text'][0]
+                label_tokens = label[0]
+
+                # --- Calcolo della loss (CORRETTO) ---
+                encoder_output = model.encode(encoder_input, encoder_mask)
+                decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+                proj_output = model.projection_layer(decoder_output)
+                loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
+                total_val_loss += loss.item()
 
                 strategy = decode_strategy_info.get('strategy', 'greedy')
                 repetition_penalty = decode_strategy_info.get('repetition_penalty', 1.2)
 
                 if strategy == 'beam':
                     beam_size = decode_strategy_info.get('beam_size', 4)
-                    model_out_tokens = beam_search_decode(model, beam_size, encoder_input, encoder_mask, tokenizer,
+                    model_out_tokens = beam_search_decode(model, beam_size, encoder_output, encoder_mask, tokenizer,
                                                           max_len, device, repetition_penalty)
                 else:
-                    model_out_tokens = greedy_decode(model, encoder_input, encoder_mask, tokenizer, max_len, device,
+                    model_out_tokens = greedy_decode(model, encoder_output, encoder_mask, tokenizer, max_len, device,
                                                      repetition_penalty)
 
-                predicted_text = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=True)
+                pred_len = model_out_tokens.size(0)
+                true_len = label_tokens[label_tokens != pad_id].size(0)
+                max_len_comp = max(pred_len, true_len)
+                padded_preds = torch.cat(
+                    [model_out_tokens, torch.full((max_len_comp - pred_len,), pad_id, dtype=torch.long, device=device)])
+                padded_trues = label_tokens[:max_len_comp]
+
+                is_pred_real = (padded_preds != pad_id)
+                is_true_real = (padded_trues != pad_id)
+
+                token_tp += ((padded_preds == padded_trues) & is_true_real).sum().item()
+                token_fp += ((padded_preds != padded_trues) & is_pred_real).sum().item()
+                token_fn += ((padded_preds != padded_trues) & is_true_real).sum().item()
+
+                predicted_text_raw = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=False)
+                predicted_text_clean = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=True)
 
                 source_texts.append(source_text)
                 expected.append(target_text)
-                predicted.append(predicted_text)
+                predicted_raw.append(predicted_text_raw)
+                predicted_clean.append(predicted_text_clean)
+
+        print("\n" + "=" * 50 + f"\n--- METRICHE DI VALIDAZIONE {phase.upper()} ---\n" + "=" * 50)
+
+        avg_val_loss = total_val_loss / len(validation_ds) if validation_ds else 0
+        print(f"\n--- Metrica Generale ---")
+        print(f"  Average Validation Loss: {avg_val_loss:.4f}")
+        if writer: writer.add_scalar(f'validation/{phase}/loss', avg_val_loss, global_step)
+
+        token_precision = token_tp / (token_tp + token_fp) if (token_tp + token_fp) > 0 else 0
+        token_recall = token_tp / (token_tp + token_fn) if (token_tp + token_fn) > 0 else 0
+        token_f1 = 2 * (token_precision * token_recall) / (token_precision + token_recall) if (
+                                                                                                          token_precision + token_recall) > 0 else 0
+
+        print("\n--- Metriche a livello di Token (diagnostica) ---")
+        print(f"  Precision: {token_precision:.4f}, Recall: {token_recall:.4f}, F1-Score: {token_f1:.4f}")
+        if writer: writer.add_scalar(f'validation/{phase}/token_f1', token_f1, global_step)
+
+        all_pred_subjects, all_true_subjects = [], []
+        all_pred_predicates, all_true_predicates = [], []
+        all_pred_objects, all_true_objects = [], []
+
+        for src, exp, pred_raw in zip(source_texts, expected, predicted_raw):
+            if "<Text2RDF>" in src or "<CONTINUERDF>" in src:
+                true_s, true_p, true_o = parse_rdf_triples_for_entity_eval(exp)
+                pred_s, pred_p, pred_o = parse_rdf_triples_for_entity_eval(pred_raw)
+                all_true_subjects.extend(true_s);
+                all_pred_subjects.extend(pred_s)
+                all_true_predicates.extend(true_p);
+                all_pred_predicates.extend(pred_p)
+                all_true_objects.extend(true_o);
+                all_pred_objects.extend(pred_o)
+
+        def calculate_entity_metrics(predictions, ground_truths):
+            pred_counter, true_counter = Counter(predictions), Counter(ground_truths)
+            tp = sum((pred_counter & true_counter).values())
+            fp = sum(pred_counter.values()) - tp
+            fn = sum(true_counter.values()) - tp
+            precision = tp / (tp + fp) if tp + fp > 0 else 0
+            recall = tp / (tp + fn) if tp + fn > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+            return precision, recall, f1
+
+        print("\n--- Metriche a livello di Entità (su task RDF) ---")
+        p, r, f1 = calculate_entity_metrics(all_pred_subjects, all_true_subjects)
+        print(f"  Subjects    | Precision: {p:.4f}, Recall: {r:.4f}, F1-Score: {f1:.4f}")
+        p, r, f1 = calculate_entity_metrics(all_pred_predicates, all_true_predicates)
+        print(f"  Predicates  | Precision: {p:.4f}, Recall: {r:.4f}, F1-Score: {f1:.4f}")
+        p, r, f1 = calculate_entity_metrics(all_pred_objects, all_true_objects)
+        print(f"  Objects     | Precision: {p:.4f}, Recall: {r:.4f}, F1-Score: {f1:.4f}")
 
         tasks = ["Text2RDF", "RDF2Text", "CONTINUERDF", "MLM"]
-        task_metrics = {task: defaultdict(list) for task in tasks}
-        qualitative_examples_by_task = {task: [] for task in tasks}
-        num_qualitative_per_task = 2
+        qualitative_examples_by_task = {}
 
-        for src, exp, pred in zip(source_texts, expected, predicted):
+        task_data = {task: {'expected': [], 'predicted': [], 'predicted_raw': [], 'source': []} for task in tasks}
+        for src, exp, pred_clean, pred_raw in zip(source_texts, expected, predicted_clean, predicted_raw):
             task_name = next((task for task in tasks if f"<{task}>" in src), "Unknown")
             if task_name != "Unknown":
-                task_metrics[task_name]['expected'].append(exp)
-                task_metrics[task_name]['predicted'].append(pred)
-                if len(qualitative_examples_by_task[task_name]) < num_qualitative_per_task:
-                    qualitative_examples_by_task[task_name].append({"source": src, "expected": exp, "predicted": pred})
+                task_data[task_name]['expected'].append(exp)
+                task_data[task_name]['predicted'].append(pred_clean)
+                task_data[task_name]['predicted_raw'].append(pred_raw)
+                task_data[task_name]['source'].append(src)
 
-        print("\n" + "=" * 50 + "\n--- METRICHE DI VALIDAZIONE FINETUNE ---\n" + "=" * 50)
-        for task, data in task_metrics.items():
+        for task, data in task_data.items():
             if not data['expected']: continue
-
-            print(f"\n--- Task: {task} ({len(data['expected'])} esempi) ---")
+            print(f"\n--- Metriche Task: {task} ({len(data['expected'])} esempi) ---")
 
             if task == "RDF2Text":
-                bleu = bleu_metric.compute(predictions=data['predicted'], references=[[e] for e in data['expected']])
-                rouge = rouge_metric.compute(predictions=data['predicted'], references=data['expected'])
-                meteor = meteor_metric.compute(predictions=data['predicted'], references=data['expected'])
+                bleu = evaluate.load("bleu").compute(predictions=data['predicted'],
+                                                     references=[[e] for e in data['expected']])
+                rouge = evaluate.load("rouge").compute(predictions=data['predicted'], references=data['expected'])
+                meteor = evaluate.load("meteor").compute(predictions=data['predicted'], references=data['expected'])
                 print(f"  BLEU: {bleu['bleu']:.4f}, ROUGE-L: {rouge['rougeL']:.4f}, METEOR: {meteor['meteor']:.4f}")
-                if writer:
-                    writer.add_scalar(f'validation/{phase}/{task}/bleu', bleu['bleu'], global_step)
-                    writer.add_scalar(f'validation/{phase}/{task}/rougeL', rouge['rougeL'], global_step)
-                    writer.add_scalar(f'validation/{phase}/{task}/meteor', meteor['meteor'], global_step)
 
             elif task in ["Text2RDF", "CONTINUERDF"]:
                 tp_s, p_s, a_s = 0, 0, 0
-                for exp, pred in zip(data['expected'], data['predicted']):
+                for exp, pred_raw in zip(data['expected'], data['predicted_raw']):
                     exp_triples = parse_rdf_triples_for_strict_eval(exp)
-                    pred_triples = parse_rdf_triples_for_strict_eval(pred)
+                    pred_triples = parse_rdf_triples_for_strict_eval(pred_raw)
                     tp_s += len(exp_triples.intersection(pred_triples))
                     p_s += len(pred_triples)
                     a_s += len(exp_triples)
@@ -243,27 +334,50 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
                 print(
                     f"  Precision (Strict): {precision:.4f}, Recall (Strict): {recall:.4f}, F1-Score (Strict): {f1:.4f}")
-                if writer:
-                    writer.add_scalar(f'validation/{phase}/{task}/precision', precision, global_step)
-                    writer.add_scalar(f'validation/{phase}/{task}/recall', recall, global_step)
-                    writer.add_scalar(f'validation/{phase}/{task}/f1', f1, global_step)
 
+            # --- INIZIO BLOCCO MODIFICATO: Aggiunta Soft Accuracy per MLM ---
             elif task == "MLM":
-                correct = sum(1 for exp, pred in zip(data['expected'], data['predicted']) if
-                              exp.strip().lower() == pred.strip().lower())
-                accuracy = correct / len(data['expected']) if data['expected'] else 0
-                print(f"  Accuracy (Strict): {accuracy:.4f}")
-                if writer:
-                    writer.add_scalar(f'validation/{phase}/{task}/accuracy', accuracy, global_step)
+                correct_strict = 0
+                correct_soft = 0
+                for exp, pred in zip(data['expected'], data['predicted']):
+                    exp_clean = exp.strip().lower()
+                    pred_clean = pred.strip().lower()
 
-        print("\n--- Esempi Qualitativi di Fine-Tuning ---")
-        for task, examples in qualitative_examples_by_task.items():
-            if not examples: continue
+                    if exp_clean == pred_clean:
+                        correct_strict += 1
+
+                    if exp_clean.startswith('dbo:'):
+                        exp_predicate = exp_clean.split(':', 1)[1]
+                        if exp_predicate == pred_clean:
+                            correct_soft += 1
+                    else:
+                        if exp_clean == pred_clean:
+                            correct_soft += 1
+
+                accuracy_strict = correct_strict / len(data['expected']) if data['expected'] else 0
+                accuracy_soft = correct_soft / len(data['expected']) if data['expected'] else 0
+
+                print(f"  Accuracy (Strict): {accuracy_strict:.4f}")
+                print(f"  Accuracy (Soft): {accuracy_soft:.4f}")
+                if writer:
+                    writer.add_scalar(f'validation/{phase}/{task}/accuracy_strict', accuracy_strict, global_step)
+                    writer.add_scalar(f'validation/{phase}/{task}/accuracy_soft', accuracy_soft, global_step)
+            # --- FINE BLOCCO MODIFICATO ---
+
+            if data['expected']:
+                if task not in qualitative_examples_by_task:
+                    qualitative_examples_by_task[task] = {
+                        "source": data['source'][0],
+                        "expected": data['expected'][0],
+                        "predicted": data['predicted'][0] if task in ["RDF2Text", "MLM"] else data['predicted_raw'][0]
+                    }
+
+        print("\n" + "=" * 50 + "\n--- ESEMPI QUALITATIVI ---\n" + "=" * 50)
+        for task, ex in qualitative_examples_by_task.items():
             print(f"\n--- Task: {task} ---")
-            for ex in examples:
-                print(f"  SOURCE:    {ex['source']}")
-                print(f"  EXPECTED:  {ex['expected']}")
-                print(f"  PREDICTED: {ex['predicted']}")
+            print(f"  SOURCE:    {ex['source']}")
+            print(f"  EXPECTED:  {ex['expected']}")
+            print(f"  PREDICTED: {ex['predicted']}")
         print("\n" + "=" * 50)
 
     model.train()
@@ -278,8 +392,8 @@ def get_ds(config, phase: str):
     with open(source_path, 'r', encoding='utf-8') as f_src, open(target_path, 'r', encoding='utf-8') as f_tgt:
         raw_ds = [{'source': s.strip(), 'target': t.strip()} for s, t in zip(f_src, f_tgt) if s.strip()]
 
-    if phase == 'finetune':
-        print("\n--- Esecuzione dello Split Stratificato per Fine-Tuning (90/10) ---")
+    if phase in ['decoder_tune', 'full_finetune']:
+        print(f"\n--- Esecuzione dello Split Stratificato per {phase.upper()} (90/10) ---")
 
         def get_task_category(item):
             return next(
@@ -319,7 +433,6 @@ def get_ds(config, phase: str):
     return train_dl, val_dl, tokenizer
 
 
-
 def train_model(config, phase: str):
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"--- INIZIO FASE: {phase.upper()} ---\nUsing device: {device}")
@@ -328,8 +441,21 @@ def train_model(config, phase: str):
 
     model_config = {k: v for k, v in config.items() if k in ["d_model", "N", "h", "dropout", "d_ff", "seq_len"]}
     model = build_transformer(vocab_size=tokenizer.get_vocab_size(), multi_head=False, **model_config).to(device)
+
+    if config.get("freeze_encoder", False):
+        print("\n--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---")
+        for name, param in model.named_parameters():
+            if name.startswith('embedding.') or name.startswith('encoder_blocks.') or name.startswith('encoder_norm.'):
+                param.requires_grad = False
+
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Parametri totali: {total_params:,}")
+    print(f"Parametri allenabili: {trainable_params:,} ({(trainable_params / total_params) * 100:.2f}%)\n")
+
     writer = SummaryWriter(config['experiment_name'])
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config['lr'], eps=1e-9, weight_decay=0.01)
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], eps=1e-9,
+                                  weight_decay=0.01)
 
     initial_epoch, global_step = 0, 0
     if config.get('preload'):
@@ -340,15 +466,20 @@ def train_model(config, phase: str):
             print(f"Preloading model {preload_path}")
             state = torch.load(preload_path, map_location=device)
             model.load_state_dict(state['model_state_dict'])
-            is_new_phase = (phase == 'finetune' and 'pretrain' in preload_path)
-            if is_new_phase:
-                print("Inizio nuova fase (finetune): contatori resettati.")
+
+            is_new_finetune_phase = phase in ['decoder_tune', 'full_finetune']
+            if is_new_finetune_phase and 'pretrain' in preload_path:
+                print("Inizio prima fase di fine-tuning (decoder_tune): contatori resettati.")
+                initial_epoch, global_step = 0, 0
+            elif phase == 'full_finetune' and 'decoder_tuned' in preload_path:
+                print("Inizio seconda fase di fine-tuning (full): contatori resettati.")
                 initial_epoch, global_step = 0, 0
             else:
                 print("Continuazione di un training interrotto.")
                 initial_epoch = state.get('epoch', -1) + 1
                 global_step = state.get('global_step', 0)
-                if 'optimizer_state_dict' in state: optimizer.load_state_dict(state['optimizer_state_dict'])
+                if 'optimizer_state_dict' in state and not config.get("freeze_encoder", False):
+                    optimizer.load_state_dict(state['optimizer_state_dict'])
             print(f"Il training parte dall'epoca {initial_epoch}")
 
     scheduler_type = config.get('scheduler_type', 'cosine_restarts')
@@ -414,13 +545,8 @@ def train_model(config, phase: str):
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
 
-            decode_strategy_info = {}
-            if phase == 'finetune':
-                decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}
-            else:
-                decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}
-
-            num_val_examples = config['num_validation_examples'] if phase == 'finetune' else -1
+            decode_strategy_info = {'strategy': 'greedy', 'repetition_penalty': 1.2}
+            num_val_examples = config.get('num_validation_examples', -1)
 
             run_validation(model, val_dataloader, tokenizer, config['seq_len'], device, global_step, writer,
                            num_val_examples, decode_strategy_info, phase)
@@ -431,7 +557,8 @@ def train_model(config, phase: str):
 
     writer.close()
     print(f"--- FASE {phase.upper()} COMPLETATA ---")
-    if phase == 'finetune':
+
+    if phase == 'full_finetune':
         print("\n--- RUNNING FINAL EVALUATION WITH BEAM SEARCH ---")
         final_writer = SummaryWriter(config['experiment_name'] + "_final_beam_eval")
         beam_decode_info = {'strategy': 'beam', 'beam_size': 4, 'repetition_penalty': 1.2}
@@ -443,11 +570,20 @@ def train_model(config, phase: str):
 if __name__ == '__main__':
     warnings.filterwarnings("ignore");
     os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
-    parser = argparse.ArgumentParser(description='Train the NanoSocrates model in phases.');
-    parser.add_argument('--phase', type=str, required=True, choices=['pretrain', 'finetune'])
+
+    parser = argparse.ArgumentParser(description='Train the NanoSocrates model in phases.')
+    parser.add_argument('--phase', type=str, required=True,
+                        choices=['pretrain', 'decoder_tune', 'full_finetune'],
+                        help="La fase di training da eseguire.")
     args = parser.parse_args()
+
     if args.phase == 'pretrain':
         config = get_pretrain_config()
+    elif args.phase == 'decoder_tune':
+        config = get_decoder_tuning_config()
+    elif args.phase == 'full_finetune':
+        config = get_full_finetune_config()
     else:
-        config = get_finetune_config()
+        raise ValueError(f"Fase '{args.phase}' non riconosciuta.")
+
     train_model(config, args.phase)

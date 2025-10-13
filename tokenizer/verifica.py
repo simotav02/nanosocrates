@@ -11,7 +11,7 @@ def main():
 
     if not os.path.exists(TOKENIZER_PATH):
         print(f"❌ ERRORE CRITICO: Il file del tokenizer non è stato trovato.")
-        print("Assicurati di aver eseguito 'tokenizer_lib.py' con successo.")
+        print("Assicurati di aver eseguito 'tokenizer_pretrain.py' con successo.")
         return
 
     try:
@@ -53,9 +53,9 @@ def main():
     else:
         print("❌ PROBLEMA RILEVATO: Il tokenizer è difettoso. Mancano i token per lo Span Corruption.")
         print(
-            "Causa probabile: lo script 'tokenizer_lib.py' è stato eseguito quando i file del corpus non erano disponibili.")
+            "Causa probabile: lo script 'tokenizer_pretrain.py' è stato eseguito quando i file del corpus non erano disponibili.")
         print(
-            "Soluzione: 1. Cancella 'film_corpus_bpe_tokenizer_t5.json'. 2. Assicurati che i dati in 'training_data_cleaned' esistano. 3. Riesegui 'tokenizer_lib.py'.")
+            "Soluzione: 1. Cancella 'film_corpus_bpe_tokenizer_t5.json'. 2. Assicurati che i dati in 'training_data_cleaned' esistano. 3. Riesegui 'tokenizer_pretrain.py'.")
 
 
 if __name__ == "__main__":

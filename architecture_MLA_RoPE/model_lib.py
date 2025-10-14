@@ -141,20 +141,24 @@ class T5Attention(nn.Module):
         out = rearrange(torch.einsum('b h i j, b h j d -> b h i d', attn, v), 'b h n d -> b n (h d)')
         return self.to_out(out)
 
-# 2. Avanzato: Architettura MLA-RoPE Disaccoppiata
 class DecoupledMlaRopeAttention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
-        self.w_dq = nn.Linear(args.dim, args.q_compressed_dim)
+        self.w_dq = nn.Linear(args.dim, args.q_compressed_dim, bias=False)
         self.q_norm = T5LayerNorm(args.q_compressed_dim)
-        self.w_uq_qr = nn.Linear(args.q_compressed_dim, args.n_heads * (args.q_nope_head_dim + args.q_rope_head_dim))
+
+        self.w_uq_qr = nn.Linear(args.q_compressed_dim, args.n_heads * (args.q_nope_head_dim + args.q_rope_head_dim),
+                                 bias=False)
         self.rope_q = RotaryPositionalEmbedding(args, args.q_rope_head_dim)
         self.rope_k = RotaryPositionalEmbedding(args, args.k_rope_head_dim)
-        self.w_dkv_kr = nn.Linear(args.dim, (args.kv_compressed_dim + args.k_rope_head_dim))
+
+        self.w_dkv_kr = nn.Linear(args.dim, args.kv_compressed_dim + args.k_rope_head_dim, bias=False)
         self.kv_norm = T5LayerNorm(args.kv_compressed_dim)
-        self.w_uk_uv = nn.Linear(args.kv_compressed_dim, args.n_kv_heads * (args.k_nope_head_dim + args.v_head_dim))
-        self.w_o = nn.Linear(args.n_heads * args.v_head_dim, args.dim)
+
+        self.w_uk_uv = nn.Linear(args.kv_compressed_dim, args.n_kv_heads * (args.k_nope_head_dim + args.v_head_dim),
+                                 bias=False)
+        self.w_o = nn.Linear(args.n_heads * args.v_head_dim, args.dim, bias=False)
 
     def forward(self, x: Tensor, mask: Optional[Tensor] = None, causal: bool = False, **kwargs) -> Tensor:
         batch_size, q_seq_len, _ = x.shape
@@ -179,17 +183,15 @@ class DecoupledMlaRopeAttention(nn.Module):
         # 3. Preparazione Key (K)
         k_rope = k_rope.view(batch_size, q_seq_len, 1, self.args.k_rope_head_dim).transpose(1, 2)
         k_rope = self.rope_k(k_rope, position_ids)
+
         k_nope_v_states = self.w_uk_uv(compressed_kv)
         k_nope, v_states = k_nope_v_states.split(
             [self.args.n_kv_heads * self.args.k_nope_head_dim, self.args.n_kv_heads * self.args.v_head_dim], dim=-1)
-        k_nope = k_nope.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.k_nope_head_dim).transpose(1, 2)
 
-        # --- INIZIO BLOCCO CORRETTO ---
-        # k_rope ha 1 head, k_nope ha n_kv_heads. Dobbiamo espandere k_rope per poterli concatenare.
-        k_rope = repeat_kv_heads(k_rope, self.args.n_kv_heads)
-        k_states = torch.cat((k_nope, k_rope), dim=-1)  # Ora hanno la stessa forma e possono essere uniti
-        k_states = repeat_kv_heads(k_states, self.args.gqa_factor)  # Applica GQA a tutto k_states
-        # --- FINE BLOCCO CORRETTO ---
+        k_nope = k_nope.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.k_nope_head_dim).transpose(1, 2)
+        k_rope_expanded = repeat_kv_heads(k_rope, self.args.n_kv_heads)
+        k_states = torch.cat((k_nope, k_rope_expanded), dim=-1)
+        k_states = repeat_kv_heads(k_states, self.args.gqa_factor)
 
         # 4. Preparazione Value (V)
         v_states = v_states.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.v_head_dim).transpose(1, 2)
@@ -198,9 +200,7 @@ class DecoupledMlaRopeAttention(nn.Module):
         # 5. Calcolo Attenzione
         attn_mask = None
         if mask is not None or causal:
-            # Crea una maschera additiva (float) invece che booleana
-            attn_mask = torch.zeros(batch_size, self.args.n_heads, q_seq_len, q_seq_len, device=x.device,
-                                    dtype=query_states.dtype)
+            attn_mask = torch.zeros(batch_size, 1, q_seq_len, q_seq_len, device=x.device, dtype=query_states.dtype)
             if mask is not None:
                 attn_mask = attn_mask.masked_fill(mask.unsqueeze(1).unsqueeze(2), float('-inf'))
             if causal:

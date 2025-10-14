@@ -1,0 +1,372 @@
+DATASET: 5000 FILM
+MODELLO: NANO
+
+
+CONFIGURAZIONE
+def get_nano_config():
+    """
+    Configurazione 'NANO' originale (20M params).
+    Buona per un dataset di medie dimensioni.
+    """
+    return {
+        "batch_size": 16,
+        "seq_len": 256,
+        "d_model": 256,
+        "N": 2,
+        "h": 4,
+        "d_ff": 1024,
+        "dropout": 0.3,
+        "num_validation_examples": -1,
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_2.json",
+    }
+
+
+def get_micro_config():
+    """
+    Configurazione 'MICRO' ancora più piccola per combattere l'overfitting
+    su dataset ridotti.
+    d_model=128, d_ff=512.
+    """
+    return {
+        "batch_size": 32,
+        "seq_len": 256,
+        "d_model": 128,
+        "N": 2,
+        "h": 4,
+        "d_ff": 512,
+        "dropout": 0.3,
+        "num_validation_examples": -1,
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_2.json",
+    }
+
+
+def get_pretrain_config():
+    """Configurazione per la fase di PRE-TRAINING con Span Corruption."""
+
+    config = get_nano_config()
+
+    config.update({
+        "num_epochs": 30,
+        "lr": 1e-4,
+        "validate_every_n_epochs": 2,
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v2",
+        "model_folder": "weights_prova_3/weights_pretrain_prova_3",
+        "model_basename": "nanosocrates_prova_3_pretrained_",
+        "experiment_name": "runs/nanosocrates_pretrain_prova_3",
+
+        "preload": None,
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "loss_label_smoothing": 0.0,
+    })
+    return config
+
+
+# --- NUOVA FASE 2: DECODER TUNING ---
+def get_decoder_tuning_config():
+    """
+    FASE 2: Adattamento del solo Decoder (Encoder CONGELATO).
+    Usa un LR medio per addestrare il decoder a interpretare le rappresentazioni dell'encoder.
+    """
+    config = get_nano_config()
+    config['dropout'] = 0.15
+
+    config.update({
+        "num_epochs": 20,
+        "lr": 5e-5,
+        "validate_every_n_epochs": 4,
+        "data_dir": "../dataset/training_data_cleaned_2",
+
+        "model_folder": "weights_prova_3/weights_decoder_tuned_prova_3",
+        "model_basename": "nanosocrates_prova_3_decoder_tuned_",
+        "experiment_name": "runs/nanosocrates_decoder_tune_prova_3",
+
+        "preload": "weights_prova_3/weights_pretrain_prova_3/nanosocrates_prova_3_pretrained_xx.pt",
+
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "freeze_encoder": True,
+
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+def get_full_finetune_config():
+    """
+    FASE 3: Fine-tuning completo End-to-End (Encoder SCONGELATO).
+    Usa un LR molto basso per affinare l'intero modello senza oblio catastrofico.
+    """
+    config = get_nano_config()
+    config['dropout'] = 0.1
+
+    config.update({
+        "num_epochs": 60,
+        "lr": 1e-5,
+        "validate_every_n_epochs": 3,
+        "data_dir": "../dataset/training_data_cleaned_2",
+
+        "model_folder": "weights_prova_3/weights_full_finetuned_prova_3",
+        "model_basename": "nanosocrates_prova_3_full_finetuned_",
+        "experiment_name": "runs/nanosocrates_full_finetune_prova_3",
+
+        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_XX.pt",
+
+        "scheduler_type": "linear_warmup",
+        "warmup_percentage": 0.1,
+
+        "freeze_encoder": False,
+
+        "loss_label_smoothing": 0.1,
+    })
+    return config
+
+
+
+
+--- INIZIO FASE: PRETRAIN ---
+Using device: mps
+
+--- Esecuzione dello Split Casuale Semplice per Pretrain (90/10) ---
+Totale: 7820 esempi di training, 869 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+Parametri totali: 20,175,771
+Parametri allenabili: 20,175,771 (100.00%)
+
+Scheduler: Linear Warmup + Decay. Total steps: 14670, Warmup steps: 1467
+Processing Epoch 00: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:05<00:00,  1.99it/s, loss=7.311]
+--- Epoch 00 finished. Average Training Loss: 9.1996 ---
+Processing Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:05<00:00,  1.99it/s, loss=3.830]
+--- Epoch 01 finished. Average Training Loss: 5.3898 ---
+
+--- Running validation for Epoch 01 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:13<00:00, 65.89it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 4.1859
+Token-level Accuracy: 0.3935
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:_A_ <extra_id_1><EOT>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> <extra_id_1><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:_ <extra_id_1> <extra_id_2><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> <extra_id_1><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> <extra_id_1><EOT>
+
+========================================
+
+Processing Epoch 02: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:11<00:00,  1.95it/s, loss=3.502]
+--- Epoch 02 finished. Average Training Loss: 3.5742 ---
+Processing Epoch 03: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=2.813]
+--- Epoch 03 finished. Average Training Loss: 3.1720 ---
+
+--- Running validation for Epoch 03 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:13<00:00, 65.57it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.3927
+Token-level Accuracy: 0.4965
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1><EOT>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2> dbo:starring <extra_id_3><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+========================================
+
+Processing Epoch 04: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=3.016]
+--- Epoch 04 finished. Average Training Loss: 2.9930 ---
+Processing Epoch 05: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:09<00:00,  1.96it/s, loss=2.516]
+--- Epoch 05 finished. Average Training Loss: 2.8781 ---
+
+--- Running validation for Epoch 05 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:13<00:00, 66.76it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2984
+Token-level Accuracy: 0.5124
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <PRED> <extra_id_1><EOT>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2> <extra_id_3><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+========================================
+
+Processing Epoch 06: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=2.842]
+--- Epoch 06 finished. Average Training Loss: 2.7932 ---
+Processing Epoch 07: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=2.855]
+--- Epoch 07 finished. Average Training Loss: 2.7065 ---
+
+--- Running validation for Epoch 07 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:13<00:00, 66.36it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2821
+Token-level Accuracy: 0.5187
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_in_the_(film) <PRED> <extra_id_1><EOT>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <PRED> <extra_id_1> <extra_id_2> <extra_id_3><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> directed by <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2> and <extra_id_3><EOT>
+
+========================================
+
+Processing Epoch 08: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=2.002]
+--- Epoch 08 finished. Average Training Loss: 2.6513 ---
+Processing Epoch 09: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:09<00:00,  1.96it/s, loss=2.635]
+--- Epoch 09 finished. Average Training Loss: 2.5869 ---
+
+--- Running validation for Epoch 09 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:22<00:00, 38.33it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.2931
+Token-level Accuracy: 0.5263
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_the_in_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_a_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_of_the_of_the_of_the_of_the_(film) <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <extra_id_1><EOT>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <extra_id_2> <extra_id_3><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> and the <extra_id_2> of the <extra_id_3><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film was <extra_id_2> and the <extra_id_3><EOT>
+
+========================================
+
+Processing Epoch 10: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:11<00:00,  1.94it/s, loss=2.242]
+--- Epoch 10 finished. Average Training Loss: 2.5354 ---
+Processing Epoch 11: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 489/489 [04:10<00:00,  1.95it/s, loss=2.602]
+--- Epoch 11 finished. Average Training Loss: 2.4759 ---
+
+--- Running validation for Epoch 11 ---
+Validating pretrain: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 869/869 [00:21<00:00, 39.63it/s]
+
+--- Pretrain Validation Metrics ---
+Average Validation Loss: 3.3332
+Token-level Accuracy: 0.5300
+
+
+========================================
+--- ESEMPI QUALITATIVI DI PRE-TRAINING ---
+========================================
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:cinematography <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:director <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:distributor <OBJ> dbr:Netflix <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> dbo:editing <OBJ> dbr:Sophia_Nahli_Allison <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> rdf:type <extra_id_0> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Love_Song_for_Latasha <PRED> <extra_id_1>
+PREDICTED: <SOT><extra_id_0> dbr:A_of_the_in_of_of_of_of_of_of_of_of_of_a_the_the_of_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_of_of_of_of_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_the_(film) <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> <PRED> dbo:starring <PRED> <PRED> <PRED> <PRED>
+
+SOURCE:    "Weird Al" Yankovic Live! is a <extra_id_0> Yankovic's concert during the Touring With <extra_id_1> tour, at the Marin County Civic Center, in San Rafael, California, on October 2, 1999. For legal reasons, video clips and several unreleased songs from the medley were not included. The concert video includes live versions of: 1.
+TARGET:    <extra_id_0> live video recording of "Weird Al" <extra_id_1> Scissors <extra_id_2>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the <extra_id_2><EOT>
+
+SOURCE:    <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:cinematography <OBJ> dbr:Thomas_Vámos <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:director <OBJ> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:musicComposer <OBJ> dbr:Milan_Kymlicka <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:producer <OBJ> dbr:Rock_Demers <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> dbo:starring <OBJ> dbr:Gilbert_Sicotte <EOT> <SOT> <SUBJ> <extra_id_0> dbo:starring <OBJ> <extra_id_1> <PRED> <extra_id_2> dbr:Micheline_Lanctôt <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <PRED> rdf:type <OBJ> dbo:Work <EOT>
+TARGET:    <extra_id_0> dbr:A_Hero's_Life_(film) <PRED> <extra_id_1> dbr:Véronique_Le_Flaguais <EOT> <SOT> <SUBJ> dbr:A_Hero's_Life_(film) <extra_id_2> dbo:writer <OBJ> <extra_id_3>
+PREDICTED: <SOT><extra_id_0> dbr:A_(film) <extra_id_1> <SUBJ> dbo:starring <OBJ> <extra_id_2> <extra_id_3><EOT>
+
+SOURCE:    A Handful of Time (En håndfull tid) is a 1989 Norwegian <extra_id_0> Espen Skjønberg, Camilla Strøm-Henriksen, Nicolay Lange-Nielsen and Bjørn Sundquist, the film also features Susannah York and Nigel Hawthorne. The film was selected as the Norwegian entry for the Best Foreign <extra_id_1> at the <extra_id_2> Academy Awards, but was not accepted as a nominee.
+TARGET:    <extra_id_0> film directed by Martin Asphaug. Starring <extra_id_1> Language Film <extra_id_2> 62nd <extra_id_3>
+PREDICTED: <SOT><extra_id_0> is a <extra_id_1> and starring <extra_id_2> the <extra_id_3><EOT>
+
+SOURCE:    A Sky Full of Stars for a Roof (Italian: <extra_id_0> tetto un cielo di stelle) is a 1968 Italian <extra_id_1> is <extra_id_2> western film directed by Giulio Petroni. At first the director was to be Franco Giraldi, but then he moved to direct A Minute to Pray, a Second to Die and Petroni replaced him.
+TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It <extra_id_2> the second <extra_id_3>
+PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film was <extra_id_2> and the <extra_id_3><EOT>
+
+========================================

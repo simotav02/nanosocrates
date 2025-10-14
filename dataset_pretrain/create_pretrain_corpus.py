@@ -6,7 +6,7 @@ from collections import Counter
 
 # --- NUOVE COSTANTI DI CONFIGURAZIONE PER LA QUALITÀ DEI DATI ---
 # Aumenta il dataset di input se vuoi più dati grezzi
-INPUT_JSON_FILE = "../dataset/film_dataset_10000_cleaned.json"  # Cambia a 20000 se hai generato un file più grande
+INPUT_JSON_FILE = "../dataset/film_dataset_30000_cleaned.json"  # Cambia a 20000 se hai generato un file più grande
 OUTPUT_DIR = "pretrain_corpus_data_v3"  # Nuova cartella per non sovrascrivere il vecchio corpus
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "pretrain_corpus.txt")
 

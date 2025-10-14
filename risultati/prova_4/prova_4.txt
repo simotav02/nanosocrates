@@ -1,6 +1,8 @@
-from pathlib import Path
+DATASET: 30000 FILM
+MODELLO: NANO
 
 
+CONFIGURAZIONE:
 def get_nano_config():
     """
     Configurazione 'NANO' originale (20M params).
@@ -80,7 +82,7 @@ def get_decoder_tuning_config():
         "model_basename": "nanosocrates_prova_4_decoder_tuned_",
         "experiment_name": "runs/nanosocrates_decoder_tune_prova_4",
 
-        "preload": "weights_prova_4/weights_pretrain_prova_4/nanosocrates_prova_4_pretrained_11.pt",
+        "preload": "weights_prova_4/weights_pretrain_prova_4/nanosocrates_prova_4_pretrained_xx.pt",
 
         "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,

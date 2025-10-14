@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 VOCAB_SIZE = 32000
 CORPUS_FILE = "../dataset_pretrain/pretrain_corpus_data_v3/pretrain_corpus.txt"
-TOKENIZER_FILE = "film_corpus_bpe_tokenizer_t5.json"
+TOKENIZER_FILE = "film_corpus_bpe_tokenizer_t5_3.json"
 
 # Definiamo TUTTI i token speciali che useremo nel progetto
 PAD_TOKEN = "<PAD>"

@@ -8,7 +8,7 @@ import numpy as np
 
 # MODIFICA
 INPUT_CORPUS_FILE = "./pretrain_corpus_data_v3/pretrain_corpus.txt"
-TOKENIZER_PATH = "../tokenizer/film_corpus_bpe_tokenizer_t5.json"
+TOKENIZER_PATH = "../tokenizer/film_corpus_bpe_tokenizer_t5_3.json"
 OUTPUT_DIR = "pretrain_t5_style_data_v3"
 
 # --- Costanti di Configurazione ---

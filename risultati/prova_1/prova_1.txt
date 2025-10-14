@@ -49,7 +49,7 @@ def get_pretrain_config():
         "num_epochs": 60,
         "lr": 1e-4,
         "validate_every_n_epochs": 2,
-        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v1",
         "model_folder": "weights_pretrain_nano_10k_data",
         "model_basename": "nanosocrates_nano_10k_data_pretrained_",
         "experiment_name": "runs/nanosocrates_nano_10k_data_pretrain",

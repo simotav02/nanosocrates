@@ -48,7 +48,7 @@ def get_pretrain_config():
         "num_epochs": 60,
         "lr": 1e-4,
         "validate_every_n_epochs": 2,
-        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v1",
         "model_folder": "weights_prova_2/weights_pretrain_prova_2",
         "model_basename": "nanosocrates_prova_2_pretrained_",
         "experiment_name": "runs/nanosocrates_pretrain_prova_2",

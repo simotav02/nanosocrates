@@ -159,42 +159,62 @@ class DecoupledMlaRopeAttention(nn.Module):
     def forward(self, x: Tensor, mask: Optional[Tensor] = None, causal: bool = False, **kwargs) -> Tensor:
         batch_size, q_seq_len, _ = x.shape
         position_ids = torch.arange(q_seq_len, device=x.device).unsqueeze(0)
+
+        # 1. Compressione
         compressed_q = self.q_norm(self.w_dq(x))
         compressed_kv_k_rope = self.w_dkv_kr(x)
-        compressed_kv, k_rope = compressed_kv_k_rope.split([self.args.kv_compressed_dim, self.args.k_rope_head_dim], dim=-1)
+        compressed_kv, k_rope = compressed_kv_k_rope.split([self.args.kv_compressed_dim, self.args.k_rope_head_dim],
+                                                           dim=-1)
         compressed_kv = self.kv_norm(compressed_kv)
-        k_rope = k_rope.view(batch_size, q_seq_len, 1, self.args.k_rope_head_dim).transpose(1, 2)
-        k_rope = self.rope_k(k_rope, position_ids)
+
+        # 2. Preparazione Query (Q)
         q_nope_q_rope = self.w_uq_qr(compressed_q)
-        q_nope, q_rope = q_nope_q_rope.split([self.args.n_heads * self.args.q_nope_head_dim, self.args.n_heads * self.args.q_rope_head_dim], dim=-1)
+        q_nope, q_rope = q_nope_q_rope.split(
+            [self.args.n_heads * self.args.q_nope_head_dim, self.args.n_heads * self.args.q_rope_head_dim], dim=-1)
         q_nope = q_nope.view(batch_size, q_seq_len, self.args.n_heads, self.args.q_nope_head_dim).transpose(1, 2)
         q_rope = q_rope.view(batch_size, q_seq_len, self.args.n_heads, self.args.q_rope_head_dim).transpose(1, 2)
         q_rope = self.rope_q(q_rope, position_ids)
         query_states = torch.cat((q_nope, q_rope), dim=-1)
+
+        # 3. Preparazione Key (K)
+        k_rope = k_rope.view(batch_size, q_seq_len, 1, self.args.k_rope_head_dim).transpose(1, 2)
+        k_rope = self.rope_k(k_rope, position_ids)
         k_nope_v_states = self.w_uk_uv(compressed_kv)
-        k_nope, v_states = k_nope_v_states.split([self.args.n_kv_heads * self.args.k_nope_head_dim, self.args.n_kv_heads * self.args.v_head_dim], dim=-1)
+        k_nope, v_states = k_nope_v_states.split(
+            [self.args.n_kv_heads * self.args.k_nope_head_dim, self.args.n_kv_heads * self.args.v_head_dim], dim=-1)
         k_nope = k_nope.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.k_nope_head_dim).transpose(1, 2)
+
+        # --- INIZIO BLOCCO CORRETTO ---
+        # k_rope ha 1 head, k_nope ha n_kv_heads. Dobbiamo espandere k_rope per poterli concatenare.
         k_rope = repeat_kv_heads(k_rope, self.args.n_kv_heads)
-        k_states = torch.cat((k_nope, k_rope), dim=-1)
-        k_states = repeat_kv_heads(k_states, self.args.gqa_factor)
+        k_states = torch.cat((k_nope, k_rope), dim=-1)  # Ora hanno la stessa forma e possono essere uniti
+        k_states = repeat_kv_heads(k_states, self.args.gqa_factor)  # Applica GQA a tutto k_states
+        # --- FINE BLOCCO CORRETTO ---
+
+        # 4. Preparazione Value (V)
         v_states = v_states.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.v_head_dim).transpose(1, 2)
         v_states = repeat_kv_heads(v_states, self.args.gqa_factor)
 
-        # Gestione maschera: converte la maschera di padding (bool) in una maschera additiva
+        # 5. Calcolo Attenzione
         attn_mask = None
-        if mask is not None:
-            attn_mask = torch.zeros(batch_size, 1, q_seq_len, q_seq_len, device=x.device, dtype=x.dtype)
-            attn_mask = attn_mask.masked_fill(mask.unsqueeze(1).unsqueeze(2), float('-inf'))
-        if causal:
-            causal_mask = torch.triu(torch.ones((q_seq_len, q_seq_len), device=x.device, dtype=torch.bool), diagonal=1)
-            if attn_mask is None:
-                attn_mask = torch.zeros(batch_size, 1, q_seq_len, q_seq_len, device=x.device, dtype=x.dtype)
-            attn_mask = attn_mask.masked_fill(causal_mask, float('-inf'))
+        if mask is not None or causal:
+            # Crea una maschera additiva (float) invece che booleana
+            attn_mask = torch.zeros(batch_size, self.args.n_heads, q_seq_len, q_seq_len, device=x.device,
+                                    dtype=query_states.dtype)
+            if mask is not None:
+                attn_mask = attn_mask.masked_fill(mask.unsqueeze(1).unsqueeze(2), float('-inf'))
+            if causal:
+                causal_mask = torch.triu(torch.ones((q_seq_len, q_seq_len), device=x.device, dtype=torch.bool),
+                                         diagonal=1)
+                attn_mask = attn_mask.masked_fill(causal_mask, float('-inf'))
 
-        attn_output = torch.nn.functional.scaled_dot_product_attention(query_states, k_states, v_states, attn_mask=attn_mask)
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, q_seq_len, self.args.n_heads * self.args.v_head_dim)
+        attn_output = torch.nn.functional.scaled_dot_product_attention(query_states, k_states, v_states,
+                                                                       attn_mask=attn_mask)
+
+        # 6. Proiezione Output
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, q_seq_len,
+                                                                    self.args.n_heads * self.args.v_head_dim)
         return self.w_o(attn_output)
-
 # --- BLOCCHI ENCODER E DECODER ---
 class EncoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout, attention_args: ModelArgs, attention_type: AttentionType):

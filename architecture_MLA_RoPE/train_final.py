@@ -435,7 +435,7 @@ def get_ds(config, phase: str):
 
 def train_model(config, phase: str):
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"--- INIZIO FASE: {phase.UPPER()} ---\nUsing device: {device}")
+    print(f"--- INIZIO FASE: {phase.upper()} ---\nUsing device: {device}")
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
     train_dataloader, val_dataloader, tokenizer = get_ds(config, phase)
 
@@ -568,7 +568,7 @@ def train_model(config, phase: str):
                  'global_step': global_step}, f"{config['model_folder']}/{config['model_basename']}{epoch:02d}.pt")
 
     writer.close()
-    print(f"--- FASE {phase.UPPER()} COMPLETATA ---")
+    print(f"--- FASE {phase.upper()} COMPLETATA ---")
 
     if phase == 'full_finetune':
         print("\n--- RUNNING FINAL EVALUATION WITH BEAM SEARCH ---")

@@ -141,24 +141,44 @@ class T5Attention(nn.Module):
         out = rearrange(torch.einsum('b h i j, b h j d -> b h i d', attn, v), 'b h n d -> b n (h d)')
         return self.to_out(out)
 
+
 class DecoupledMlaRopeAttention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.args = args
-        self.w_dq = nn.Linear(args.dim, args.q_compressed_dim, bias=False)
-        self.q_norm = T5LayerNorm(args.q_compressed_dim)
+        self.n_heads = args.n_heads
+        self.n_kv_heads = args.n_kv_heads
 
-        self.w_uq_qr = nn.Linear(args.q_compressed_dim, args.n_heads * (args.q_nope_head_dim + args.q_rope_head_dim),
+        # --- CALCOLO DIMENSIONI DERIVATE (LA CORREZIONE CHIAVE) ---
+        # La dimensione di ogni "testa" di valore (Value) è derivata dalla dimensione totale
+        self.v_head_dim = args.dim // args.n_heads
+        # Le dimensioni delle componenti NOPE/ROPE sono una frazione di v_head_dim
+        # Questo garantisce che la somma delle parti sia sempre coerente
+        self.q_rope_head_dim = self.v_head_dim // 2
+        self.q_nope_head_dim = self.v_head_dim // 2
+        self.k_rope_head_dim = self.v_head_dim // 2
+        self.k_nope_head_dim = self.v_head_dim // 2
+
+        q_head_dim = self.q_nope_head_dim + self.q_rope_head_dim
+        k_head_dim = self.k_nope_head_dim + self.k_rope_head_dim
+
+        # Le dimensioni per la compressione sono fisse, come da design originale
+        q_compressed_dim = 128
+        kv_compressed_dim = 128
+
+        self.w_dq = nn.Linear(args.dim, q_compressed_dim, bias=False)
+        self.q_norm = T5LayerNorm(q_compressed_dim)
+
+        self.w_uq_qr = nn.Linear(q_compressed_dim, self.n_heads * q_head_dim, bias=False)
+        self.rope_q = RotaryPositionalEmbedding(args, self.q_rope_head_dim)
+        self.rope_k = RotaryPositionalEmbedding(args, self.k_rope_head_dim)
+
+        self.w_dkv_kr = nn.Linear(args.dim, kv_compressed_dim + self.k_rope_head_dim, bias=False)
+        self.kv_norm = T5LayerNorm(kv_compressed_dim)
+
+        self.w_uk_uv = nn.Linear(kv_compressed_dim, self.n_kv_heads * (self.k_nope_head_dim + self.v_head_dim),
                                  bias=False)
-        self.rope_q = RotaryPositionalEmbedding(args, args.q_rope_head_dim)
-        self.rope_k = RotaryPositionalEmbedding(args, args.k_rope_head_dim)
-
-        self.w_dkv_kr = nn.Linear(args.dim, args.kv_compressed_dim + args.k_rope_head_dim, bias=False)
-        self.kv_norm = T5LayerNorm(args.kv_compressed_dim)
-
-        self.w_uk_uv = nn.Linear(args.kv_compressed_dim, args.n_kv_heads * (args.k_nope_head_dim + args.v_head_dim),
-                                 bias=False)
-        self.w_o = nn.Linear(args.n_heads * args.v_head_dim, args.dim, bias=False)
+        self.w_o = nn.Linear(self.n_heads * self.v_head_dim, args.dim, bias=False)
 
     def forward(self, x: Tensor, mask: Optional[Tensor] = None, causal: bool = False, **kwargs) -> Tensor:
         batch_size, q_seq_len, _ = x.shape
@@ -167,34 +187,31 @@ class DecoupledMlaRopeAttention(nn.Module):
         # 1. Compressione
         compressed_q = self.q_norm(self.w_dq(x))
         compressed_kv_k_rope = self.w_dkv_kr(x)
-        compressed_kv, k_rope = compressed_kv_k_rope.split([self.args.kv_compressed_dim, self.args.k_rope_head_dim],
-                                                           dim=-1)
+        compressed_kv, k_rope = compressed_kv_k_rope.split([128, self.k_rope_head_dim], dim=-1)  # Usa 128 esplicito
         compressed_kv = self.kv_norm(compressed_kv)
 
         # 2. Preparazione Query (Q)
         q_nope_q_rope = self.w_uq_qr(compressed_q)
-        q_nope, q_rope = q_nope_q_rope.split(
-            [self.args.n_heads * self.args.q_nope_head_dim, self.args.n_heads * self.args.q_rope_head_dim], dim=-1)
-        q_nope = q_nope.view(batch_size, q_seq_len, self.args.n_heads, self.args.q_nope_head_dim).transpose(1, 2)
-        q_rope = q_rope.view(batch_size, q_seq_len, self.args.n_heads, self.args.q_rope_head_dim).transpose(1, 2)
+        q_nope, q_rope = q_nope_q_rope.split([self.n_heads * self.q_nope_head_dim, self.n_heads * self.q_rope_head_dim],
+                                             dim=-1)
+        q_nope = q_nope.view(batch_size, q_seq_len, self.n_heads, self.q_nope_head_dim).transpose(1, 2)
+        q_rope = q_rope.view(batch_size, q_seq_len, self.n_heads, self.q_rope_head_dim).transpose(1, 2)
         q_rope = self.rope_q(q_rope, position_ids)
         query_states = torch.cat((q_nope, q_rope), dim=-1)
 
         # 3. Preparazione Key (K)
-        k_rope = k_rope.view(batch_size, q_seq_len, 1, self.args.k_rope_head_dim).transpose(1, 2)
+        k_rope = k_rope.view(batch_size, q_seq_len, 1, self.k_rope_head_dim).transpose(1, 2)
         k_rope = self.rope_k(k_rope, position_ids)
-
         k_nope_v_states = self.w_uk_uv(compressed_kv)
         k_nope, v_states = k_nope_v_states.split(
-            [self.args.n_kv_heads * self.args.k_nope_head_dim, self.args.n_kv_heads * self.args.v_head_dim], dim=-1)
-
-        k_nope = k_nope.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.k_nope_head_dim).transpose(1, 2)
-        k_rope_expanded = repeat_kv_heads(k_rope, self.args.n_kv_heads)
+            [self.n_kv_heads * self.k_nope_head_dim, self.n_kv_heads * self.v_head_dim], dim=-1)
+        k_nope = k_nope.view(batch_size, q_seq_len, self.n_kv_heads, self.k_nope_head_dim).transpose(1, 2)
+        k_rope_expanded = repeat_kv_heads(k_rope, self.n_kv_heads)
         k_states = torch.cat((k_nope, k_rope_expanded), dim=-1)
         k_states = repeat_kv_heads(k_states, self.args.gqa_factor)
 
         # 4. Preparazione Value (V)
-        v_states = v_states.view(batch_size, q_seq_len, self.args.n_kv_heads, self.args.v_head_dim).transpose(1, 2)
+        v_states = v_states.view(batch_size, q_seq_len, self.n_kv_heads, self.v_head_dim).transpose(1, 2)
         v_states = repeat_kv_heads(v_states, self.args.gqa_factor)
 
         # 5. Calcolo Attenzione
@@ -212,10 +229,13 @@ class DecoupledMlaRopeAttention(nn.Module):
                                                                        attn_mask=attn_mask)
 
         # 6. Proiezione Output
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, q_seq_len,
-                                                                    self.args.n_heads * self.args.v_head_dim)
+        # La dimensione di output ora sarà: n_heads * v_head_dim = n_heads * (dim / n_heads) = dim
+        # Questo risolve l'errore di .view()
+        output_dim = self.n_heads * self.v_head_dim
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, q_seq_len, output_dim)
+
         return self.w_o(attn_output)
-# --- BLOCCHI ENCODER E DECODER ---
+
 class EncoderBlock(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout, attention_args: ModelArgs, attention_type: AttentionType):
         super().__init__()

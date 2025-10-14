@@ -477,7 +477,11 @@ def train_model(config, phase: str):
         else:
             print(f"Preloading model {preload_path}")
             state = torch.load(preload_path, map_location=device)
-            model.load_state_dict(state['model_state_dict'])
+            model.load_state_dict(state['model_state_dict'], strict=False)
+            print("\nAVVISO: Pesi caricati in modalità non-stricta (strict=False).")
+            print("Questo è corretto perché i layer di self-attention hanno nomi diversi.")
+            print("I layer comuni (Embedding, FFN, Cross-Attention, etc.) sono stati caricati.")
+            print("I nuovi layer di self-attention (MLA-RoPE) verranno addestrati da zero.\n")
 
             is_new_finetune_phase = phase in ['decoder_tune', 'full_finetune']
             if is_new_finetune_phase and 'pretrain' in preload_path:

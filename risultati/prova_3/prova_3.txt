@@ -366,3 +366,398 @@ TARGET:    <extra_id_0> ...e per <extra_id_1> Spaghetti Western comedy film. It 
 PREDICTED: <SOT><extra_id_0> a <extra_id_1> the film was <extra_id_2> and the <extra_id_3><EOT>
 
 ========================================
+
+
+
+--- INIZIO FASE: DECODER_TUNE ---
+Using device: mps
+
+--- Esecuzione dello Split Stratificato per DECODER_TUNE (90/10) ---
+Categoria 'CONTINUERDF': 1455 train / 162 val
+Categoria 'MLM': 970 train / 108 val
+Categoria 'RDF2Text': 1213 train / 135 val
+Categoria 'Text2RDF': 1213 train / 135 val
+Totale: 4851 esempi di training, 540 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+
+--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---
+Parametri totali: 20,175,771
+Parametri allenabili: 10,366,619 (51.38%)
+
+Preloading model weights_prova_3/weights_pretrain_prova_3/nanosocrates_prova_3_pretrained_07.pt
+Inizio prima fase di fine-tuning (decoder_tune): contatori resettati.
+Il training parte dall'epoca 0
+Scheduler: Linear Warmup + Decay. Total steps: 6080, Warmup steps: 608
+Processing Epoch 00: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:03<00:00,  2.46it/s, loss=7.065]
+--- Epoch 00 finished. Average Training Loss: 6.2264 ---
+Processing Epoch 01: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.39it/s, loss=6.318]
+--- Epoch 01 finished. Average Training Loss: 4.8190 ---
+Processing Epoch 02: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.39it/s, loss=3.857]
+--- Epoch 02 finished. Average Training Loss: 4.6760 ---
+Processing Epoch 03: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.39it/s, loss=4.028]
+--- Epoch 03 finished. Average Training Loss: 4.5836 ---
+
+--- Running validation for Epoch 03 ---
+Validating Decoder-tune (Greedy):  90%|████████████████████████████████████████████████████████████████████████████████████████████▎          | 484/540 Validating Decoder-tune (Greedy):  90%|████████████████████████████████████████████████████████████████████████████████████████████▌          | 485/540 Validating Decoder-tune (Greedy):  90%|████████████████████████████████████████████████████████████████████████████████████████████▋          | 486/540 Validating Decoder-tune (Greedy):  90%|████████████████████████████████████████████████████████████████████████████████████████████▉          | 487/540 Validating Decoder-tune (Greedy):  90%|█████████████████████████████████████████████████████████████████████████████████████████████          | 488/540 Validating Decoder-tune (Greedy):  91%|█████████████████████████████████████████████████████████████████████████████████████████████▎         | 489/540 Validating Decoder-tune (Greedy):  91%|█████████████████████████████████████████████████████████████████████████████████████████████▍         | 490/540 Validating Decoder-tune (Greedy):  91%|█████████████████████████████████████████████████████████████████████████████████████████████▋         | 491/540 Validating Decoder-tune (Greedy):  91%|█████████████████████████████████████████████████████████████████████████████████████████████▊         | 492/540 Validating Decoder-tune (Greedy):  91%|██████████████████████████████████████████████████████████████████████████████████████████████         | 493/540 Validating Decoder-tune (Greedy):  91%|██████████████████████████████████████████████████████████████████████████████████████████████▏        | 494/540 Validating Decoder-tune (Greedy):  92%|██████████████████████████████████████████████████████████████████████████████████████████████▍        | 495/540 Validating Decoder-tune (Greedy):  92%|██████████████████████████████████████████████████████████████████████████████████████████████▌        | 496/540 Validating Decoder-tune (Greedy):  92%|██████████████████████████████████████████████████████████████████████████████████████████████▊        | 497/540 Validating Decoder-tune (Greedy):  92%|██████████████████████████████████████████████████████████████████████████████████████████████▉        | 498/540 Validating Decoder-tune (Greedy):  92%|███████████████████████████████████████████████████████████████████████████████████████████████▏       | 499/540 Validating Decoder-tune Validating Decoder-tune (Greedy): 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████| 540/540 [25:07<00:00,  2.79s/it]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 3.3672
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.0578, Recall: 0.0653, F1-Score: 0.0613
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.1961, F1-Score: 0.3279
+  Objects     | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- Metriche Task: Text2RDF (135 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (135 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0085, ROUGE-L: 0.0889, METEOR: 0.0810
+
+--- Metriche Task: CONTINUERDF (162 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (108 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A Separation (Persian: جدایی, romanized: Jodâyi; also titled Nader and Simin, A Separation) is a 2011 Iranian drama film written and directed by Asghar Farhadi, starring Leila Hatami, Peyman Moaadi, Shahab Hosseini, Sareh Bayat, and Sarina Farhadi. It focuses on an Iranian middle-class couple who separate, the disappointment and desperation suffered by their daughter due to the egotistical disputes and separation of her parents, and the conflicts that arise when the husband hires a lower-class caregiver for his elderly father, who suffers from Alzheimer's disease. A Separation won the Academy Award for Best Foreign Language Film in 2012, becoming the first Iranian film to win the award. It received the Golden Bear for Best Film and the Silver Bears for Best Actress and Best Actor at the 61st Berlin International Film Festival, becoming the first Iranian film to win the Golden Bear. It also won the Golden Globe for Best Foreign Language Film and the Asia Pacific Screen Award for Best Feature Film. The film was nominated for the Academy Award for Best Original Screenplay, making it the first non-English film in five years to achieve this. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:country <OBJ> dbr:Iran <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:director <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:producer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Leila_Hatami <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Peyman_Moaadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sareh_Bayat <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sarina_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Shahab_Hosseini <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:writer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> rdf:type <OBJ> dbo:Film <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_the_(film) <PRED> dbo:director <OBJ> dbr:A_(film) <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:director <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:distributor <OBJ> dbr:Warner_Bros. <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:imdbId <OBJ> 0092130 <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:musicComposer <OBJ> dbr:Francis_Lai <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:producer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Anouk_Aimée <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Jean-Louis_Trintignant <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Pierre_Uytterhoeven <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Man and a Woman: 20 Years Later (French: Un homme et une femme: Vingt ans déjà; literally A Man and a Woman, 20 Years Already) is a 1986 French drama film directed by Claude Lelouch and is a sequel to Lelouch's 1966 film Un homme et une femme. It was screened out of competition at the 1986 Cannes Film Festival. A follow up to both films, The Best Years of a Life, again starring Trintignant and Aimee, was released in 2019.
+  PREDICTED: A is a Aof(film)  starring  A(actor)
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Work <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_in_the_(film) <PRED> dbo:starring <OBJ> <OBJ> dbr:A_Man_to_(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Goofy_Movie <PRED> rdf:type <MASK> <EOT> <MLM>
+  EXPECTED:  dbo:Film
+  PREDICTED:   Aofinthe(film)  starring   Aforofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofofof
+
+==================================================
+Processing Epoch 04: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:06<00:00,  2.40it/s, loss=4.053]
+--- Epoch 04 finished. Average Training Loss: 4.5319 ---
+Processing Epoch 05: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:04<00:00,  2.44it/s, loss=6.914]
+--- Epoch 05 finished. Average Training Loss: 4.4860 ---
+Processing Epoch 06: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:04<00:00,  2.45it/s, loss=6.863]
+--- Epoch 06 finished. Average Training Loss: 4.4456 ---
+Processing Epoch 07: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:04<00:00,  2.44it/s, loss=3.152]
+--- Epoch 07 finished. Average Training Loss: 4.3927 ---
+
+--- Running validation for Epoch 07 ---
+Validating Decoder-tune (Greedy): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 540/540 [19:44<00:00,  2.19s/it]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 3.2009
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.0721, Recall: 0.0675, F1-Score: 0.0697
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.2551, F1-Score: 0.4065
+  Objects     | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- Metriche Task: Text2RDF (135 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (135 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0177, ROUGE-L: 0.1029, METEOR: 0.1078
+
+--- Metriche Task: CONTINUERDF (162 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (108 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.0000
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A Separation (Persian: جدایی, romanized: Jodâyi; also titled Nader and Simin, A Separation) is a 2011 Iranian drama film written and directed by Asghar Farhadi, starring Leila Hatami, Peyman Moaadi, Shahab Hosseini, Sareh Bayat, and Sarina Farhadi. It focuses on an Iranian middle-class couple who separate, the disappointment and desperation suffered by their daughter due to the egotistical disputes and separation of her parents, and the conflicts that arise when the husband hires a lower-class caregiver for his elderly father, who suffers from Alzheimer's disease. A Separation won the Academy Award for Best Foreign Language Film in 2012, becoming the first Iranian film to win the award. It received the Golden Bear for Best Film and the Silver Bears for Best Actress and Best Actor at the 61st Berlin International Film Festival, becoming the first Iranian film to win the Golden Bear. It also won the Golden Globe for Best Foreign Language Film and the Asia Pacific Screen Award for Best Feature Film. The film was nominated for the Academy Award for Best Original Screenplay, making it the first non-English film in five years to achieve this. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:country <OBJ> dbr:Iran <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:director <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:producer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Leila_Hatami <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Peyman_Moaadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sareh_Bayat <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sarina_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Shahab_Hosseini <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:writer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> rdf:type <OBJ> dbo:Film <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_the_(film) <PRED> dbo:director <OBJ> dbr:A_(film) <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:director <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:distributor <OBJ> dbr:Warner_Bros. <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:imdbId <OBJ> 0092130 <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:musicComposer <OBJ> dbr:Francis_Lai <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:producer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Anouk_Aimée <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Jean-Louis_Trintignant <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Pierre_Uytterhoeven <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Man and a Woman: 20 Years Later (French: Un homme et une femme: Vingt ans déjà; literally A Man and a Woman, 20 Years Already) is a 1986 French drama film directed by Claude Lelouch and is a sequel to Lelouch's 1966 film Un homme et une femme. It was screened out of competition at the 1986 Cannes Film Festival. A follow up to both films, The Best Years of a Life, again starring Trintignant and Aimee, was released in 2019.
+  PREDICTED: A is a Aofthein(film) is a  starring  AManto(film)  A(film)
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Work <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_in_the_(film) <PRED> dbo:starring <OBJ> dbr:A_Man_(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Goofy_Movie <PRED> rdf:type <MASK> <EOT> <MLM>
+  EXPECTED:  dbo:Film
+  PREDICTED:   Aofthein(film)  starring  AManNightofofofofofofofofofofofofofofofofofofofofofofofofthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+==================================================
+Processing Epoch 08: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.39it/s, loss=5.549]
+--- Epoch 08 finished. Average Training Loss: 4.3887 ---
+Processing Epoch 09: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:08<00:00,  2.37it/s, loss=5.933]
+--- Epoch 09 finished. Average Training Loss: 4.3655 ---
+Processing Epoch 10: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:09<00:00,  2.35it/s, loss=3.118]
+--- Epoch 10 finished. Average Training Loss: 4.3257 ---
+Processing Epoch 11: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:09<00:00,  2.35it/s, loss=4.563]
+--- Epoch 11 finished. Average Training Loss: 4.3156 ---
+
+--- Running validation for Epoch 11 ---
+Validating Decoder-tune (Greedy): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 540/540 [20:36<00:00,  2.29s/it]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 3.1210
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.0654, Recall: 0.0679, F1-Score: 0.0666
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.2238, F1-Score: 0.3657
+  Objects     | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- Metriche Task: Text2RDF (135 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (135 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0311, ROUGE-L: 0.1480, METEOR: 0.1203
+
+--- Metriche Task: CONTINUERDF (162 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (108 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.0093
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A Separation (Persian: جدایی, romanized: Jodâyi; also titled Nader and Simin, A Separation) is a 2011 Iranian drama film written and directed by Asghar Farhadi, starring Leila Hatami, Peyman Moaadi, Shahab Hosseini, Sareh Bayat, and Sarina Farhadi. It focuses on an Iranian middle-class couple who separate, the disappointment and desperation suffered by their daughter due to the egotistical disputes and separation of her parents, and the conflicts that arise when the husband hires a lower-class caregiver for his elderly father, who suffers from Alzheimer's disease. A Separation won the Academy Award for Best Foreign Language Film in 2012, becoming the first Iranian film to win the award. It received the Golden Bear for Best Film and the Silver Bears for Best Actress and Best Actor at the 61st Berlin International Film Festival, becoming the first Iranian film to win the Golden Bear. It also won the Golden Globe for Best Foreign Language Film and the Asia Pacific Screen Award for Best Feature Film. The film was nominated for the Academy Award for Best Original Screenplay, making it the first non-English film in five years to achieve this. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:country <OBJ> dbr:Iran <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:director <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:producer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Leila_Hatami <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Peyman_Moaadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sareh_Bayat <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sarina_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Shahab_Hosseini <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:writer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> rdf:type <OBJ> dbo:Film <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_the_(film) <PRED> dbo:director <OBJ> dbr:A_(film) <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:director <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:distributor <OBJ> dbr:Warner_Bros. <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:imdbId <OBJ> 0092130 <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:musicComposer <OBJ> dbr:Francis_Lai <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:producer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Anouk_Aimée <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Jean-Louis_Trintignant <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Pierre_Uytterhoeven <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Man and a Woman: 20 Years Later (French: Un homme et une femme: Vingt ans déjà; literally A Man and a Woman, 20 Years Already) is a 1986 French drama film directed by Claude Lelouch and is a sequel to Lelouch's 1966 film Un homme et une femme. It was screened out of competition at the 1986 Cannes Film Festival. A follow up to both films, The Best Years of a Life, again starring Trintignant and Aimee, was released in 2019.
+  PREDICTED: A Man is a Aoftheinthethetheathethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Work <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_in_the_(film) <PRED> dbo:starring <OBJ> dbr:Robert_Man_(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Goofy_Movie <PRED> rdf:type <MASK> <EOT> <MLM>
+  EXPECTED:  dbo:Film
+  PREDICTED:   Aofinthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+==================================================
+Processing Epoch 12: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.38it/s, loss=6.659]
+--- Epoch 12 finished. Average Training Loss: 4.3032 ---
+Processing Epoch 13: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:08<00:00,  2.37it/s, loss=4.592]
+--- Epoch 13 finished. Average Training Loss: 4.2827 ---
+Processing Epoch 14: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.38it/s, loss=2.993]
+--- Epoch 14 finished. Average Training Loss: 4.2729 ---
+Processing Epoch 15: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:06<00:00,  2.41it/s, loss=3.819]
+--- Epoch 15 finished. Average Training Loss: 4.2663 ---
+
+--- Running validation for Epoch 15 ---
+Validating Decoder-tune (Greedy): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 540/540 [22:07<00:00,  2.46s/it]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 3.0749
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.0606, Recall: 0.0675, F1-Score: 0.0638
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.2155, F1-Score: 0.3545
+  Objects     | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- Metriche Task: Text2RDF (135 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (135 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0358, ROUGE-L: 0.1687, METEOR: 0.1427
+
+--- Metriche Task: CONTINUERDF (162 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (108 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.0185
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A Separation (Persian: جدایی, romanized: Jodâyi; also titled Nader and Simin, A Separation) is a 2011 Iranian drama film written and directed by Asghar Farhadi, starring Leila Hatami, Peyman Moaadi, Shahab Hosseini, Sareh Bayat, and Sarina Farhadi. It focuses on an Iranian middle-class couple who separate, the disappointment and desperation suffered by their daughter due to the egotistical disputes and separation of her parents, and the conflicts that arise when the husband hires a lower-class caregiver for his elderly father, who suffers from Alzheimer's disease. A Separation won the Academy Award for Best Foreign Language Film in 2012, becoming the first Iranian film to win the award. It received the Golden Bear for Best Film and the Silver Bears for Best Actress and Best Actor at the 61st Berlin International Film Festival, becoming the first Iranian film to win the Golden Bear. It also won the Golden Globe for Best Foreign Language Film and the Asia Pacific Screen Award for Best Feature Film. The film was nominated for the Academy Award for Best Original Screenplay, making it the first non-English film in five years to achieve this. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:country <OBJ> dbr:Iran <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:director <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:producer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Leila_Hatami <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Peyman_Moaadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sareh_Bayat <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sarina_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Shahab_Hosseini <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:writer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> rdf:type <OBJ> dbo:Film <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_the_(film) <PRED> dbo:director <OBJ> dbr:A_(film) <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:director <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:distributor <OBJ> dbr:Warner_Bros. <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:imdbId <OBJ> 0092130 <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:musicComposer <OBJ> dbr:Francis_Lai <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:producer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Anouk_Aimée <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Jean-Louis_Trintignant <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Pierre_Uytterhoeven <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Man and a Woman: 20 Years Later (French: Un homme et une femme: Vingt ans déjà; literally A Man and a Woman, 20 Years Already) is a 1986 French drama film directed by Claude Lelouch and is a sequel to Lelouch's 1966 film Un homme et une femme. It was screened out of competition at the 1986 Cannes Film Festival. A follow up to both films, The Best Years of a Life, again starring Trintignant and Aimee, was released in 2019.
+  PREDICTED: A Man is a Aoftheinthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Work <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_in_the_(film) <PRED> dbo:starring <OBJ> dbr:Robert_(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Goofy_Movie <PRED> rdf:type <MASK> <EOT> <MLM>
+  EXPECTED:  dbo:Film
+  PREDICTED:   Aofinthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+==================================================
+Processing Epoch 16: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:07<00:00,  2.39it/s, loss=4.624]
+--- Epoch 16 finished. Average Training Loss: 4.2476 ---
+Processing Epoch 17: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:04<00:00,  2.43it/s, loss=6.087]
+--- Epoch 17 finished. Average Training Loss: 4.2664 ---
+Processing Epoch 18: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:04<00:00,  2.45it/s, loss=3.943]
+--- Epoch 18 finished. Average Training Loss: 4.2320 ---
+Processing Epoch 19: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 304/304 [02:03<00:00,  2.46it/s, loss=2.998]
+--- Epoch 19 finished. Average Training Loss: 4.2305 ---
+
+--- Running validation for Epoch 19 ---
+Validating Decoder-tune (Greedy): 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 540/540 [21:33<00:00,  2.39s/it]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 3.0597
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.0623, Recall: 0.0679, F1-Score: 0.0650
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+  Predicates  | Precision: 1.0000, Recall: 0.2118, F1-Score: 0.3495
+  Objects     | Precision: 0.0000, Recall: 0.0000, F1-Score: 0.0000
+
+--- Metriche Task: Text2RDF (135 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (135 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0357, ROUGE-L: 0.1837, METEOR: 0.1502
+
+--- Metriche Task: CONTINUERDF (162 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: MLM (108 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.0370
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    A Separation (Persian: جدایی, romanized: Jodâyi; also titled Nader and Simin, A Separation) is a 2011 Iranian drama film written and directed by Asghar Farhadi, starring Leila Hatami, Peyman Moaadi, Shahab Hosseini, Sareh Bayat, and Sarina Farhadi. It focuses on an Iranian middle-class couple who separate, the disappointment and desperation suffered by their daughter due to the egotistical disputes and separation of her parents, and the conflicts that arise when the husband hires a lower-class caregiver for his elderly father, who suffers from Alzheimer's disease. A Separation won the Academy Award for Best Foreign Language Film in 2012, becoming the first Iranian film to win the award. It received the Golden Bear for Best Film and the Silver Bears for Best Actress and Best Actor at the 61st Berlin International Film Festival, becoming the first Iranian film to win the Golden Bear. It also won the Golden Globe for Best Foreign Language Film and the Asia Pacific Screen Award for Best Feature Film. The film was nominated for the Academy Award for Best Original Screenplay, making it the first non-English film in five years to achieve this. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:country <OBJ> dbr:Iran <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:director <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:producer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Leila_Hatami <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Peyman_Moaadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sareh_Bayat <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Sarina_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:starring <OBJ> dbr:Shahab_Hosseini <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> dbo:writer <OBJ> dbr:Asghar_Farhadi <EOT> <SOT> <SUBJ> dbr:A_Separation <PRED> rdf:type <OBJ> dbo:Film <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_the_(film) <PRED> dbo:director <OBJ> dbr:Robert_(film) <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:director <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:distributor <OBJ> dbr:Warner_Bros. <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:imdbId <OBJ> 0092130 <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:musicComposer <OBJ> dbr:Francis_Lai <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:producer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Anouk_Aimée <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:starring <OBJ> dbr:Jean-Louis_Trintignant <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Claude_Lelouch <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> dbo:writer <OBJ> dbr:Pierre_Uytterhoeven <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:A_Man_and_a_Woman:_20_Years_Later <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  A Man and a Woman: 20 Years Later (French: Un homme et une femme: Vingt ans déjà; literally A Man and a Woman, 20 Years Already) is a 1986 French drama film directed by Claude Lelouch and is a sequel to Lelouch's 1966 film Un homme et une femme. It was screened out of competition at the 1986 Cannes Film Festival. A follow up to both films, The Best Years of a Life, again starring Trintignant and Aimee, was released in 2019.
+  PREDICTED: A Man is a Aoftheinthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Film <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:13_Going_on_30 <PRED> rdf:type <OBJ> dbo:Work <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_of_in_the_(film) <PRED> dbo:starring <OBJ> dbr:Robert_(actor) <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Goofy_Movie <PRED> rdf:type <MASK> <EOT> <MLM>
+  EXPECTED:  dbo:Film
+  PREDICTED:   Aofinthethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethethe
+
+==================================================
+--- FASE DECODER_TUNE COMPLETATA ---
+

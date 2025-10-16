@@ -122,3 +122,401 @@ def get_full_finetune_config():
         "loss_label_smoothing": 0.1,
     })
     return config
+
+
+
+
+
+(venv) simonetavilla@MacBookPro architecture_multitask % python train_final.py --phase decoder_tune
+--- INIZIO FASE: DECODER_TUNE ---
+Using device: mps
+
+--- Esecuzione dello Split Stratificato per DECODER_TUNE (90/10) ---
+Categoria 'CONTINUERDF': 11215 train / 1247 val
+Categoria 'MLM': 7477 train / 831 val
+Categoria 'RDF2Text': 9346 train / 1039 val
+Categoria 'Text2RDF': 9346 train / 1039 val
+Totale: 37384 esempi di training, 4156 esempi di validazione.
+
+Modello Transformer (Single-Head, con T5 Relative Bias V2) costruito con 20,175,771 parametri.
+
+--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---
+Parametri totali: 20,175,771
+Parametri allenabili: 10,366,619 (51.38%)
+
+Preloading model weights_prova_4/weights_pretrain_prova_4/nanosocrates_prova_4_pretrained_11.pt
+Inizio prima fase di fine-tuning (decoder_tune): contatori resettati.
+Il training parte dall'epoca 0
+Scheduler: Linear Warmup + Decay. Total steps: 46740, Warmup steps: 4674
+Processing Epoch 00: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:49<00:00,  3.04it/s, loss=4.219]
+--- Epoch 00 finished. Average Training Loss: 5.0084 ---
+Processing Epoch 01: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:58<00:00,  3.00it/s, loss=4.632]
+--- Epoch 01 finished. Average Training Loss: 4.0893 ---
+Processing Epoch 02: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:59<00:00,  3.00it/s, loss=4.126]
+--- Epoch 02 finished. Average Training Loss: 3.9646 ---
+Processing Epoch 03: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:58<00:00,  3.00it/s, loss=3.337]
+--- Epoch 03 finished. Average Training Loss: 3.8714 ---
+
+--- Running validation for Epoch 03 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 4156/4156 [45:29<00:00,  1.52it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 2.4951
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.1887, Recall: 0.0749, F1-Score: 0.1072
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0085, Recall: 0.0024, F1-Score: 0.0037
+  Predicates  | Precision: 0.9906, Recall: 0.2789, F1-Score: 0.4353
+  Objects     | Precision: 0.0358, Recall: 0.0101, F1-Score: 0.0157
+
+--- Metriche Task: Text2RDF (1039 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (1039 esempi) ---
+Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--bleu/9e0985c1200e367cce45605ce0ecb5ede079894e0f24f54613fca08eeb8aff76 (last modified on Wed Sep 24 15:42:45 2025) since it couldn't be found locally at evaluate-metric--bleu, or remotely on the Hugging Face Hub.
+Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--rouge/b01e0accf3bd6dd24839b769a5fda24e14995071570870922c71970b3a6ed886 (last modified on Wed Sep 24 15:46:18 2025) since it couldn't be found locally at evaluate-metric--rouge, or remotely on the Hugging Face Hub.
+WARNING:evaluate.loading:Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--meteor/e7ed321a1b44c34fa4679192809db2cee7e3bd4bba0fe8b76061d807706c2374 (last modified on Wed Sep 24 15:46:20 2025) since it couldn't be found locally at evaluate-metric--meteor, or remotely on the Hugging Face Hub.
+[nltk_data] Error loading wordnet: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+[nltk_data] Error loading punkt_tab: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+[nltk_data] Error loading omw-1.4: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+  BLEU: 0.0135, ROUGE-L: 0.1421, METEOR: 0.1042
+
+--- Metriche Task: CONTINUERDF (1247 esempi) ---
+  Precision (Strict): 0.0017, Recall (Strict): 0.0010, F1-Score (Strict): 0.0012
+
+--- Metriche Task: MLM (831 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.2034
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    Borders of Love (Czech: Hranice lásky) is a 2022 Czech-Polish erotic drama film directed by . It premiered at Karlovy Vary International Film Festival on 4 July 2022. The film was announced as an erotic thriller about the boundaries of love and freedom. Hana Vagnerová and Matyáš Řezníček are cast in the main roles, Martin Hoffman and Eliška Křenková appear in supporting roles. The film will enter theatres on 3 November 2022. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Hana_Vagnerová <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Matyáš_Řezníček <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:writer <OBJ> dbr:Hana_Vagnerová <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Man_(film) <PRED> dbo:director <OBJ> dbr:J._S._Griffith <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:cinematography <OBJ> dbr:Ashok_Kumar_(cinematographer) <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:director <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:editing <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Rajasthani_language <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:musicComposer <OBJ> dbr:Vishwa_Mohan_Bhatt <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Gaurang_Doshi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Deepti_Naval <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Nandita_Das <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  Bawandar (English title: The Sand Storm) is a 2000 Indian film, based on the true story of Bhanwari Devi, a rape victim from Rajasthan, India. The film depicts the personal trauma, public humiliation and legal injustice that Bhanwari Devi went through, while pursuing justice in the Indian courts.
+  PREDICTED: Bhai (transl. TheHai  starring  S.V.Rao
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Brian_Cox_(actor) <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Fred_Ward <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Keanu_Reeves <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Kevin_Dunn <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Morgan_Freeman <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Rachel_Weisz <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Body_(1996_film) <PRED> dbo:starring <OBJ> dbr:John_S._V._Rama <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Wife_in_Danger <MASK> <OBJ> dbr:Alfredo_Vanni <EOT> <MLM>
+  EXPECTED:  dbo:writer
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 04: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:14<00:00,  2.94it/s, loss=2.588]
+--- Epoch 04 finished. Average Training Loss: 3.8107 ---
+Processing Epoch 05: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:06<00:00,  2.97it/s, loss=3.349]
+--- Epoch 05 finished. Average Training Loss: 3.7561 ---
+Processing Epoch 06: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:59<00:00,  3.00it/s, loss=4.184]
+--- Epoch 06 finished. Average Training Loss: 3.7150 ---
+Processing Epoch 07: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:58<00:00,  3.00it/s, loss=3.516]
+--- Epoch 07 finished. Average Training Loss: 3.6795 ---
+
+--- Running validation for Epoch 07 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 4156/4156 [55:39<00:00,  1.24it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 2.3699
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.1783, Recall: 0.0790, F1-Score: 0.1094
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0107, Recall: 0.0030, F1-Score: 0.0047
+  Predicates  | Precision: 0.9916, Recall: 0.2812, F1-Score: 0.4381
+  Objects     | Precision: 0.0569, Recall: 0.0161, F1-Score: 0.0251
+
+--- Metriche Task: Text2RDF (1039 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (1039 esempi) ---
+WARNING:evaluate.loading:Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--bleu/9e0985c1200e367cce45605ce0ecb5ede079894e0f24f54613fca08eeb8aff76 (last modified on Wed Sep 24 15:42:45 2025) since it couldn't be found locally at evaluate-metric--bleu, or remotely on the Hugging Face Hub.
+WARNING:evaluate.loading:Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--rouge/b01e0accf3bd6dd24839b769a5fda24e14995071570870922c71970b3a6ed886 (last modified on Wed Sep 24 15:46:18 2025) since it couldn't be found locally at evaluate-metric--rouge, or remotely on the Hugging Face Hub.
+WARNING:evaluate.loading:Using the latest cached version of the module from /Users/simonetavilla/.cache/huggingface/modules/evaluate_modules/metrics/evaluate-metric--meteor/e7ed321a1b44c34fa4679192809db2cee7e3bd4bba0fe8b76061d807706c2374 (last modified on Wed Sep 24 15:46:20 2025) since it couldn't be found locally at evaluate-metric--meteor, or remotely on the Hugging Face Hub.
+[nltk_data] Error loading wordnet: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+[nltk_data] Error loading punkt_tab: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+[nltk_data] Error loading omw-1.4: <urlopen error [Errno 8] nodename
+[nltk_data]     nor servname provided, or not known>
+  BLEU: 0.0294, ROUGE-L: 0.1783, METEOR: 0.1334
+
+--- Metriche Task: CONTINUERDF (1247 esempi) ---
+  Precision (Strict): 0.0008, Recall (Strict): 0.0005, F1-Score (Strict): 0.0006
+
+--- Metriche Task: MLM (831 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.2034
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    Borders of Love (Czech: Hranice lásky) is a 2022 Czech-Polish erotic drama film directed by . It premiered at Karlovy Vary International Film Festival on 4 July 2022. The film was announced as an erotic thriller about the boundaries of love and freedom. Hana Vagnerová and Matyáš Řezníček are cast in the main roles, Martin Hoffman and Eliška Křenková appear in supporting roles. The film will enter theatres on 3 November 2022. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Hana_Vagnerová <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Matyáš_Řezníček <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:writer <OBJ> dbr:Hana_Vagnerová <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Man_in_the_Sun <PRED> dbo:director <OBJ> dbr:J._S._Griffith <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:cinematography <OBJ> dbr:Ashok_Kumar_(cinematographer) <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:director <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:editing <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Rajasthani_language <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:musicComposer <OBJ> dbr:Vishwa_Mohan_Bhatt <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Gaurang_Doshi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Deepti_Naval <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Nandita_Das <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  Bawandar (English title: The Sand Storm) is a 2000 Indian film, based on the true story of Bhanwari Devi, a rape victim from Rajasthan, India. The film depicts the personal trauma, public humiliation and legal injustice that Bhanwari Devi went through, while pursuing justice in the Indian courts.
+  PREDICTED: Anand (transl. The) is a 2014 Indian Hindi-language action thriller film directed by K. S. V. Rama Rao, and produced by P. Prakash Rao under the banner of the lead roles. The film stars Akkineni Nageswara Rao, Raj Kapoor, and music composed by M. R. N. T. S. Prasad. It was released on 27 December 2016.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Brian_Cox_(actor) <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Fred_Ward <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Keanu_Reeves <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Kevin_Dunn <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Morgan_Freeman <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Rachel_Weisz <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Chennai_(1996_film) <PRED> dbo:starring <OBJ> dbr:John_S._Jackson <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Wife_in_Danger <MASK> <OBJ> dbr:Alfredo_Vanni <EOT> <MLM>
+  EXPECTED:  dbo:writer
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 08: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:07<00:00,  2.97it/s, loss=4.014]
+--- Epoch 08 finished. Average Training Loss: 3.6488 ---
+Processing Epoch 09: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:01<00:00,  2.99it/s, loss=3.107]
+--- Epoch 09 finished. Average Training Loss: 3.6189 ---
+Processing Epoch 10: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:03<00:00,  2.98it/s, loss=2.338]
+--- Epoch 10 finished. Average Training Loss: 3.6003 ---
+Processing Epoch 11: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:59<00:00,  3.00it/s, loss=4.029]
+--- Epoch 11 finished. Average Training Loss: 3.5775 ---
+
+--- Running validation for Epoch 11 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 4156/4156 [46:00<00:00,  1.51it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 2.3054
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.2013, Recall: 0.0789, F1-Score: 0.1133
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0169, Recall: 0.0048, F1-Score: 0.0075
+  Predicates  | Precision: 0.9920, Recall: 0.2809, F1-Score: 0.4379
+  Objects     | Precision: 0.0654, Recall: 0.0185, F1-Score: 0.0289
+
+--- Metriche Task: Text2RDF (1039 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (1039 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0264, ROUGE-L: 0.1989, METEOR: 0.1566
+
+--- Metriche Task: CONTINUERDF (1247 esempi) ---
+  Precision (Strict): 0.0017, Recall (Strict): 0.0010, F1-Score (Strict): 0.0012
+
+--- Metriche Task: MLM (831 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.2046
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    Borders of Love (Czech: Hranice lásky) is a 2022 Czech-Polish erotic drama film directed by . It premiered at Karlovy Vary International Film Festival on 4 July 2022. The film was announced as an erotic thriller about the boundaries of love and freedom. Hana Vagnerová and Matyáš Řezníček are cast in the main roles, Martin Hoffman and Eliška Křenková appear in supporting roles. The film will enter theatres on 3 November 2022. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Hana_Vagnerová <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Matyáš_Řezníček <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:writer <OBJ> dbr:Hana_Vagnerová <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Girl_(film) <PRED> dbo:director <OBJ> dbr:J._V._R._Burman <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:cinematography <OBJ> dbr:Ashok_Kumar_(cinematographer) <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:director <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:editing <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Rajasthani_language <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:musicComposer <OBJ> dbr:Vishwa_Mohan_Bhatt <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Gaurang_Doshi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Deepti_Naval <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Nandita_Das <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  Bawandar (English title: The Sand Storm) is a 2000 Indian film, based on the true story of Bhanwari Devi, a rape victim from Rajasthan, India. The film depicts the personal trauma, public humiliation and legal injustice that Bhanwari Devi went through, while pursuing justice in the Indian courts.
+  PREDICTED: Anand (transl. The) is a 2014 Indian Hindi-language action thriller film directed by K. S. V. Rama Rao and produced by M. Prakash, with music composed by P. R. Raj under the banner of the same name by N. Venkatesh. The film stars Mohanlal, Prem Nazir, Ramya Kumar, and editing by Ilaiyaraaja. It was released on 14 December 2015.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Brian_Cox_(actor) <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Fred_Ward <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Keanu_Reeves <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Kevin_Dunn <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Morgan_Freeman <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Rachel_Weisz <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:Chennai_(1996_film) <PRED> dbo:starring <OBJ> dbr:John_S._Jackson <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Wife_in_Danger <MASK> <OBJ> dbr:Alfredo_Vanni <EOT> <MLM>
+  EXPECTED:  dbo:writer
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 12: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:03<00:00,  2.98it/s, loss=2.894]
+--- Epoch 12 finished. Average Training Loss: 3.5585 ---
+Processing Epoch 13: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:16<00:00,  2.93it/s, loss=2.835]
+--- Epoch 13 finished. Average Training Loss: 3.5371 ---
+Processing Epoch 14: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:07<00:00,  2.97it/s, loss=3.377]
+--- Epoch 14 finished. Average Training Loss: 3.5305 ---
+Processing Epoch 15: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:03<00:00,  2.98it/s, loss=4.330]
+--- Epoch 15 finished. Average Training Loss: 3.5128 ---
+
+--- Running validation for Epoch 15 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 4156/4156 [45:16<00:00,  1.53it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 2.2700
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.1980, Recall: 0.0786, F1-Score: 0.1125
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0214, Recall: 0.0060, F1-Score: 0.0094
+  Predicates  | Precision: 0.9915, Recall: 0.2807, F1-Score: 0.4375
+  Objects     | Precision: 0.0770, Recall: 0.0218, F1-Score: 0.0340
+
+--- Metriche Task: Text2RDF (1039 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (1039 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0282, ROUGE-L: 0.2035, METEOR: 0.1604
+
+--- Metriche Task: CONTINUERDF (1247 esempi) ---
+  Precision (Strict): 0.0025, Recall (Strict): 0.0015, F1-Score (Strict): 0.0018
+
+--- Metriche Task: MLM (831 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.2034
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    Borders of Love (Czech: Hranice lásky) is a 2022 Czech-Polish erotic drama film directed by . It premiered at Karlovy Vary International Film Festival on 4 July 2022. The film was announced as an erotic thriller about the boundaries of love and freedom. Hana Vagnerová and Matyáš Řezníček are cast in the main roles, Martin Hoffman and Eliška Křenková appear in supporting roles. The film will enter theatres on 3 November 2022. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Hana_Vagnerová <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Matyáš_Řezníček <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:writer <OBJ> dbr:Hana_Vagnerová <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Woman_of_the_Night <PRED> dbo:director <OBJ> dbr:J._R._Griffith <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:cinematography <OBJ> dbr:Ashok_Kumar_(cinematographer) <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:director <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:editing <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Rajasthani_language <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:musicComposer <OBJ> dbr:Vishwa_Mohan_Bhatt <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Gaurang_Doshi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Deepti_Naval <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Nandita_Das <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  Bawandar (English title: The Sand Storm) is a 2000 Indian film, based on the true story of Bhanwari Devi, a rape victim from Rajasthan, India. The film depicts the personal trauma, public humiliation and legal injustice that Bhanwari Devi went through, while pursuing justice in the Indian courts.
+  PREDICTED: Anand (transl. The Girl) is a 2014 Indian Hindi-language action thriller film directed by K. S. V. Rama Rao and produced by M. Prakash, with music composed by P. R. Raj under the banner of the same name by T. Venkatesh. The film stars Prem Nazir, Mohanlal, N. S. Shankar, and editing by Ilaiyaraaja. It was released on 14 April 2015.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Brian_Cox_(actor) <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Fred_Ward <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Keanu_Reeves <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Kevin_Dunn <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Morgan_Freeman <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Rachel_Weisz <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:1996_(1996_film) <PRED> dbo:starring <OBJ> dbr:John_Malkovich <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Wife_in_Danger <MASK> <OBJ> dbr:Alfredo_Vanni <EOT> <MLM>
+  EXPECTED:  dbo:writer
+  PREDICTED: starring
+
+==================================================
+Processing Epoch 16: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:02<00:00,  2.99it/s, loss=2.316]
+--- Epoch 16 finished. Average Training Loss: 3.5032 ---
+Processing Epoch 17: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [12:58<00:00,  3.00it/s, loss=3.063]
+--- Epoch 17 finished. Average Training Loss: 3.4960 ---
+Processing Epoch 18: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:02<00:00,  2.99it/s, loss=4.696]
+--- Epoch 18 finished. Average Training Loss: 3.4928 ---
+Processing Epoch 19: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████| 2337/2337 [13:01<00:00,  2.99it/s, loss=4.300]
+--- Epoch 19 finished. Average Training Loss: 3.4889 ---
+
+--- Running validation for Epoch 19 ---
+Validating Decoder-tune (Greedy): 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████| 4156/4156 [43:53<00:00,  1.58it/s]
+
+==================================================
+--- METRICHE DI VALIDAZIONE DECODER_TUNE ---
+==================================================
+
+--- Metrica Generale ---
+  Average Validation Loss: 2.2583
+
+--- Metriche a livello di Token (diagnostica) ---
+  Precision: 0.2040, Recall: 0.0795, F1-Score: 0.1144
+
+--- Metriche a livello di Entità (su task RDF) ---
+  Subjects    | Precision: 0.0235, Recall: 0.0067, F1-Score: 0.0104
+  Predicates  | Precision: 0.9925, Recall: 0.2821, F1-Score: 0.4393
+  Objects     | Precision: 0.0785, Recall: 0.0223, F1-Score: 0.0347
+
+--- Metriche Task: Text2RDF (1039 esempi) ---
+  Precision (Strict): 0.0000, Recall (Strict): 0.0000, F1-Score (Strict): 0.0000
+
+--- Metriche Task: RDF2Text (1039 esempi) ---
+[nltk_data] Downloading package wordnet to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package wordnet is already up-to-date!
+[nltk_data] Downloading package punkt_tab to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package punkt_tab is already up-to-date!
+[nltk_data] Downloading package omw-1.4 to
+[nltk_data]     /Users/simonetavilla/nltk_data...
+[nltk_data]   Package omw-1.4 is already up-to-date!
+  BLEU: 0.0281, ROUGE-L: 0.2047, METEOR: 0.1605
+
+--- Metriche Task: CONTINUERDF (1247 esempi) ---
+  Precision (Strict): 0.0033, Recall (Strict): 0.0020, F1-Score (Strict): 0.0024
+
+--- Metriche Task: MLM (831 esempi) ---
+  Accuracy (Strict): 0.0000
+  Accuracy (Soft): 0.2034
+
+==================================================
+--- ESEMPI QUALITATIVI ---
+==================================================
+
+--- Task: Text2RDF ---
+  SOURCE:    Borders of Love (Czech: Hranice lásky) is a 2022 Czech-Polish erotic drama film directed by . It premiered at Karlovy Vary International Film Festival on 4 July 2022. The film was announced as an erotic thriller about the boundaries of love and freedom. Hana Vagnerová and Matyáš Řezníček are cast in the main roles, Martin Hoffman and Eliška Křenková appear in supporting roles. The film will enter theatres on 3 November 2022. <Text2RDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Hana_Vagnerová <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:starring <OBJ> dbr:Matyáš_Řezníček <EOT> <SOT> <SUBJ> dbr:Borders_of_Love <PRED> dbo:writer <OBJ> dbr:Hana_Vagnerová <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:A_Man_Called_His_Die <PRED> dbo:director <OBJ> dbr:J._R._V._Burman <EOT>
+
+--- Task: RDF2Text ---
+  SOURCE:    <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:cinematography <OBJ> dbr:Ashok_Kumar_(cinematographer) <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:country <OBJ> dbr:India <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:director <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:editing <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Hindi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:language <OBJ> dbr:Rajasthani_language <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:musicComposer <OBJ> dbr:Vishwa_Mohan_Bhatt <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Gaurang_Doshi <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:producer <OBJ> dbr:Jag_Mundhra <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Deepti_Naval <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> dbo:starring <OBJ> dbr:Nandita_Das <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Film <EOT> <SOT> <SUBJ> dbr:Bawandar <PRED> rdf:type <OBJ> dbo:Work <EOT> <RDF2Text>
+  EXPECTED:  Bawandar (English title: The Sand Storm) is a 2000 Indian film, based on the true story of Bhanwari Devi, a rape victim from Rajasthan, India. The film depicts the personal trauma, public humiliation and legal injustice that Bhanwari Devi went through, while pursuing justice in the Indian courts.
+  PREDICTED: Anand (transl. The Girl) is a 2014 Indian Hindi-language action thriller film directed by K. S. V. Rama Rao and produced by M. Prakash, with music composed by P. Raj under the banner of the same name by R. Venkatesh. The film stars Prem Nazir, Mohanlal, N. T. Rama Rao, and editing by Ilaiyaraaja. It was released on 14 April 2015.
+
+--- Task: CONTINUERDF ---
+  SOURCE:    <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Brian_Cox_(actor) <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Fred_Ward <EOT> <CONTINUERDF>
+  EXPECTED:  <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Keanu_Reeves <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Kevin_Dunn <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Morgan_Freeman <EOT> <SOT> <SUBJ> dbr:Chain_Reaction_(1996_film) <PRED> dbo:starring <OBJ> dbr:Rachel_Weisz <EOT>
+  PREDICTED: <SOT> <SUBJ> dbr:1996_(1996_film) <PRED> dbo:starring <OBJ> dbr:John_Malkovich <EOT>
+
+--- Task: MLM ---
+  SOURCE:    <SOT> <SUBJ> dbr:A_Wife_in_Danger <MASK> <OBJ> dbr:Alfredo_Vanni <EOT> <MLM>
+  EXPECTED:  dbo:writer
+  PREDICTED: starring
+
+==================================================
+--- FASE DECODER_TUNE COMPLETATA ---
+

@@ -3,7 +3,7 @@
 from tokenizers import Tokenizer
 import os
 
-TOKENIZER_PATH = "film_corpus_bpe_tokenizer_t5.json"
+TOKENIZER_PATH = "film_corpus_bpe_tokenizer_t5_1.json"
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
         print(
             "Causa probabile: lo script 'tokenizer_pretrain.py' è stato eseguito quando i file del corpus non erano disponibili.")
         print(
-            "Soluzione: 1. Cancella 'film_corpus_bpe_tokenizer_t5.json'. 2. Assicurati che i dati in 'training_data_cleaned' esistano. 3. Riesegui 'tokenizer_pretrain.py'.")
+            "Soluzione: 1. Cancella 'film_corpus_bpe_tokenizer_t5_1.json'. 2. Assicurati che i dati in 'training_data_cleaned_1' esistano. 3. Riesegui 'tokenizer_pretrain.py'.")
 
 
 if __name__ == "__main__":

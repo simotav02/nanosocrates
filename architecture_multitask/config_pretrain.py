@@ -3,8 +3,7 @@ from pathlib import Path
 
 def get_nano_config():
     """
-    Configurazione 'NANO' originale (20M params).
-    Buona per un dataset di medie dimensioni.
+    Configurazione 'NANO'
     """
     return {
         "batch_size": 16,
@@ -15,15 +14,13 @@ def get_nano_config():
         "d_ff": 1024,
         "dropout": 0.3,
         "num_validation_examples": -1,
-        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_3.json",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_2.json",
     }
 
 
 def get_micro_config():
     """
-    Configurazione 'MICRO' ancora più piccola per combattere l'overfitting
-    su dataset ridotti.
-    d_model=128, d_ff=512.
+    Configurazione 'MICRO'
     """
     return {
         "batch_size": 32,
@@ -34,7 +31,7 @@ def get_micro_config():
         "d_ff": 512,
         "dropout": 0.3,
         "num_validation_examples": -1,
-        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_3.json",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_2.json",
     }
 
 
@@ -44,13 +41,13 @@ def get_pretrain_config():
     config = get_nano_config()
 
     config.update({
-        "num_epochs": 60,
+        "num_epochs": 30,
         "lr": 1e-4,
         "validate_every_n_epochs": 2,
-        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v3",
-        "model_folder": "weights_prova_4/weights_pretrain_prova_4",
-        "model_basename": "nanosocrates_prova_4_pretrained_",
-        "experiment_name": "runs/nanosocrates_pretrain_prova_4",
+        "data_dir": "../dataset_pretrain/pretrain_t5_style_data_v2",
+        "model_folder": "weights_prova_3/weights_pretrain_prova_3",
+        "model_basename": "nanosocrates_prova_3_pretrained_",
+        "experiment_name": "runs/nanosocrates_pretrain_prova_3",
 
         "preload": None,
         "scheduler_type": "linear_warmup",
@@ -61,7 +58,6 @@ def get_pretrain_config():
     return config
 
 
-# --- NUOVA FASE 2: DECODER TUNING ---
 def get_decoder_tuning_config():
     """
     FASE 2: Adattamento del solo Decoder (Encoder CONGELATO).
@@ -74,13 +70,13 @@ def get_decoder_tuning_config():
         "num_epochs": 20,
         "lr": 5e-5,
         "validate_every_n_epochs": 4,
-        "data_dir": "../dataset/training_data_cleaned_3",
+        "data_dir": "../dataset/training_data_cleaned_2",
 
-        "model_folder": "weights_prova_4/weights_decoder_tuned_prova_4",
-        "model_basename": "nanosocrates_prova_4_decoder_tuned_",
-        "experiment_name": "runs/nanosocrates_decoder_tune_prova_4",
+        "model_folder": "weights_prova_3/weights_decoder_tuned_prova_3",
+        "model_basename": "nanosocrates_prova_3_decoder_tuned_",
+        "experiment_name": "runs/nanosocrates_decoder_tune_prova_3",
 
-        "preload": "weights_prova_4/weights_pretrain_prova_4/nanosocrates_prova_4_pretrained_11.pt",
+        "preload": "weights_prova_3/weights_pretrain_prova_3/nanosocrates_prova_3_pretrained_07.pt",
 
         "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,
@@ -104,13 +100,13 @@ def get_full_finetune_config():
         "num_epochs": 60,
         "lr": 1e-5,
         "validate_every_n_epochs": 3,
-        "data_dir": "../dataset/training_data_cleaned_3",
+        "data_dir": "../dataset/training_data_cleaned_2",
 
-        "model_folder": "weights_prova_4/weights_full_finetuned_prova_4",
-        "model_basename": "nanosocrates_prova_4_full_finetuned_",
-        "experiment_name": "runs/nanosocrates_full_finetune_prova_4",
+        "model_folder": "weights_prova_3/weights_full_finetuned_prova_3",
+        "model_basename": "nanosocrates_prova_3_full_finetuned_",
+        "experiment_name": "runs/nanosocrates_full_finetune_prova_3",
 
-        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_XX.pt",
+        "preload": "weights_decoder_tuned_prova_1/nanosocrates_decoder_tuned_nano_XX.pt",
 
         "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,

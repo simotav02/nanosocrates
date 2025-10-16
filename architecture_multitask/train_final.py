@@ -1,5 +1,3 @@
-# --- START OF FILE train_final.py ---
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -22,8 +20,6 @@ from config_pretrain import get_pretrain_config, get_decoder_tuning_config, get_
 from dataset_lib import NanoSocratesDataset
 
 
-# SOSTITUISCI LE VECCHIE FUNZIONI CON QUESTE DUE
-
 def greedy_decode(model, source_or_encoder_output, source_mask, tokenizer, max_len, device,
                   repetition_penalty: float = 1.2):
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
@@ -34,9 +30,6 @@ def greedy_decode(model, source_or_encoder_output, source_mask, tokenizer, max_l
     else:
         encoder_output = model.encode(source_or_encoder_output, source_mask)
 
-    # --- CORREZIONE CRUCIALE ---
-    # Il decoder_input deve SEMPRE essere di tipo long perché contiene indici di token.
-    # Usiamo .long() invece di .type_as()
     decoder_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
 
     while decoder_input.size(1) < max_len:
@@ -51,7 +44,6 @@ def greedy_decode(model, source_or_encoder_output, source_mask, tokenizer, max_l
                     logits[0, token_id] *= repetition_penalty
         _, next_word = torch.max(logits, dim=1)
 
-        # Anche il nuovo token deve essere di tipo long
         next_word_tensor = torch.empty(1, 1, dtype=torch.long, device=device).fill_(next_word.item())
         decoder_input = torch.cat([decoder_input, next_word_tensor], dim=1)
 
@@ -69,8 +61,6 @@ def beam_search_decode(model, beam_size, source_or_encoder_output, source_mask, 
     else:
         encoder_output = model.encode(source_or_encoder_output, source_mask)
 
-    # --- CORREZIONE CRUCIALE ---
-    # Anche qui, l'input iniziale deve essere di tipo long.
     initial_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
     beams = [(initial_input, 0.0)]
     completed_beams = []
@@ -94,7 +84,6 @@ def beam_search_decode(model, beam_size, source_or_encoder_output, source_mask, 
             log_probs = torch.log_softmax(logits, dim=-1)
             topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
             for i in range(beam_size):
-                # topk_idx è già di tipo long, quindi non serve conversione qui
                 token_idx = topk_idx[0, i].unsqueeze(0).unsqueeze(0)
                 token_log_prob = topk_log_probs[0, i].item()
                 new_seq = torch.cat([candidate_seq, token_idx], dim=1)
@@ -335,7 +324,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 print(
                     f"  Precision (Strict): {precision:.4f}, Recall (Strict): {recall:.4f}, F1-Score (Strict): {f1:.4f}")
 
-            # --- INIZIO BLOCCO MODIFICATO: Aggiunta Soft Accuracy per MLM ---
             elif task == "MLM":
                 correct_strict = 0
                 correct_soft = 0
@@ -362,7 +350,6 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 if writer:
                     writer.add_scalar(f'validation/{phase}/{task}/accuracy_strict', accuracy_strict, global_step)
                     writer.add_scalar(f'validation/{phase}/{task}/accuracy_soft', accuracy_soft, global_step)
-            # --- FINE BLOCCO MODIFICATO ---
 
             if data['expected']:
                 if task not in qualitative_examples_by_task:

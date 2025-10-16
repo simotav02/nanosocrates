@@ -5,8 +5,7 @@ MODELLO: NANO
 CONFIGURAZIONE
 def get_nano_config():
     """
-    Configurazione 'NANO' originale (20M params).
-    Buona per un dataset di medie dimensioni.
+    Configurazione 'NANO'
     """
     return {
         "batch_size": 16,
@@ -17,15 +16,13 @@ def get_nano_config():
         "d_ff": 1024,
         "dropout": 0.3,
         "num_validation_examples": -1,
-        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_1.json",
     }
 
 
 def get_micro_config():
     """
-    Configurazione 'MICRO' ancora più piccola per combattere l'overfitting
-    su dataset ridotti.
-    d_model=128, d_ff=512.
+    Configurazione 'MICRO'
     """
     return {
         "batch_size": 32,
@@ -36,7 +33,7 @@ def get_micro_config():
         "d_ff": 512,
         "dropout": 0.3,
         "num_validation_examples": -1,
-        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5.json",
+        "tokenizer_file": "../tokenizer/film_corpus_bpe_tokenizer_t5_1.json",
     }
 
 
@@ -63,7 +60,6 @@ def get_pretrain_config():
     return config
 
 
-# --- NUOVA FASE 2: DECODER TUNING ---
 def get_decoder_tuning_config():
     """
     FASE 2: Adattamento del solo Decoder (Encoder CONGELATO).
@@ -76,7 +72,7 @@ def get_decoder_tuning_config():
         "num_epochs": 20,
         "lr": 5e-5,
         "validate_every_n_epochs": 4,
-        "data_dir": "../dataset/training_data_cleaned",
+        "data_dir": "../dataset/training_data_cleaned_1",
 
         "model_folder": "weights_decoder_tuned_nano",
         "model_basename": "nanosocrates_decoder_tuned_nano_",
@@ -106,7 +102,7 @@ def get_full_finetune_config():
         "num_epochs": 60,
         "lr": 1e-5,
         "validate_every_n_epochs": 3,
-        "data_dir": "../dataset/training_data_cleaned",
+        "data_dir": "../dataset/training_data_cleaned_1",
 
         "model_folder": "weights_full_finetuned_nano",
         "model_basename": "nanosocrates_full_finetuned_nano_",

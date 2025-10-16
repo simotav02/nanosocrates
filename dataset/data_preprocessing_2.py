@@ -59,7 +59,6 @@ def main():
         abstract = film_data.get("abstract", "").strip()
         all_triples = film_data.get("triples", [])
 
-
         if not all([title, subject_uri, abstract, all_triples]):
             rejection_reasons['dati_mancanti'] += 1;
             continue
@@ -100,11 +99,11 @@ def main():
 
         for triple in all_triples:
             mlm_candidates.append({
-                                      "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {PRED_TOKEN} {triple['predicate']} {MASK_TOKEN} {EOT_TOKEN} {MLM_TOKEN}",
-                                      "output": triple['object']})
+                "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {PRED_TOKEN} {triple['predicate']} {MASK_TOKEN} {EOT_TOKEN} {MLM_TOKEN}",
+                "output": triple['object']})
             mlm_candidates.append({
-                                      "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {MASK_TOKEN} {OBJ_TOKEN} {triple['object']} {EOT_TOKEN} {MLM_TOKEN}",
-                                      "output": triple['predicate']})
+                "input": f"{SOT_TOKEN} {SUBJ_TOKEN} {triple['subject']} {MASK_TOKEN} {OBJ_TOKEN} {triple['object']} {EOT_TOKEN} {MLM_TOKEN}",
+                "output": triple['predicate']})
 
     print(
         "\n" + "=" * 50 + "\n--- Risultati della Fase di Pulizia dei Dati ---\n" + f"Record totali processati: {records_processed}\n" + f"Record scartati: {records_processed - records_kept} ({((records_processed - records_kept) / records_processed) * 100:.2f}%)\n" + f"Record tenuti per il training: {records_kept}\n\nDettaglio motivi di scarto:")

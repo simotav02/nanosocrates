@@ -110,7 +110,7 @@ def get_full_finetune_config():
         "model_basename": "nanosocrates_prova_4_full_finetuned_",
         "experiment_name": "runs/nanosocrates_full_finetune_prova_4",
 
-        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_XX.pt",
+        "preload": "weights_decoder_tuned_prova_1/nanosocrates_decoder_tuned_nano_XX.pt",
 
         "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,
@@ -139,7 +139,7 @@ def get_full_finetune_config_mla_rope():
         "model_basename": "nanosocrates_prova_4_full_finetuned_",
         "experiment_name": "runs/nanosocrates_full_finetune_prova_4",
 
-        "preload": "weights_decoder_tuned_nano/nanosocrates_decoder_tuned_nano_XX.pt",
+        "preload": "weights_decoder_tuned_prova_1/nanosocrates_decoder_tuned_nano_XX.pt",
 
         "scheduler_type": "linear_warmup",
         "warmup_percentage": 0.1,

@@ -4,18 +4,14 @@ from tqdm import tqdm
 import random
 from collections import Counter
 
-# --- NUOVE COSTANTI DI CONFIGURAZIONE PER LA QUALITÀ DEI DATI ---
-# Aumenta il dataset di input se vuoi più dati grezzi
-INPUT_JSON_FILE = "../dataset/film_dataset_30000_cleaned.json"  # Cambia a 20000 se hai generato un file più grande
-OUTPUT_DIR = "pretrain_corpus_data_v3"  # Nuova cartella per non sovrascrivere il vecchio corpus
+INPUT_JSON_FILE = "../dataset/film_dataset_30000_cleaned.json"
+OUTPUT_DIR = "pretrain_corpus_data_v3"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "pretrain_corpus.txt")
 
-# Parametri di filtraggio
-MIN_WORDS_THRESHOLD = 15  # Aumentato da 10 per avere più contesto
-MAX_WORDS_THRESHOLD = 250  # Leggermente sotto seq_len per lasciare margine
-TARGET_BALANCE_RATIO = 0.5  # Vogliamo circa 50% abstract e 50% RDF
+MIN_WORDS_THRESHOLD = 15
+MAX_WORDS_THRESHOLD = 250
+TARGET_BALANCE_RATIO = 0.5
 
-# Token di base (rimangono invariati)
 SOT_TOKEN, EOT_TOKEN = "<SOT>", "<EOT>"
 SUBJ_TOKEN, PRED_TOKEN, OBJ_TOKEN = "<SUBJ>", "<PRED>", "<OBJ>"
 
@@ -44,7 +40,6 @@ def main():
     with open(INPUT_JSON_FILE, 'r', encoding='utf-8') as f:
         all_films_data = json.load(f)
 
-    # --- NUOVA SEZIONE: ESTRAZIONE E FILTRAGGIO INIZIALE ---
     print("\n1/4 - Estrazione e filtraggio iniziale del corpus...")
 
     raw_abstracts = []
@@ -77,7 +72,6 @@ def main():
                 else:
                     stats['rdf_chunks_rejected_by_length'] += 1
 
-    # --- NUOVA SEZIONE: DE-DUPLICAZIONE ---
     print("\n2/4 - Rimozione dei duplicati...")
 
     unique_abstracts = sorted(list(set(raw_abstracts)))
@@ -86,7 +80,6 @@ def main():
     stats['abstracts_after_deduplication'] = len(unique_abstracts)
     stats['rdf_chunks_after_deduplication'] = len(unique_rdf_chunks)
 
-    # --- NUOVA SEZIONE: BILANCIAMENTO DEL CORPUS ---
     print("\n3/4 - Bilanciamento del corpus (target 50% abstract, 50% RDF)...")
 
     final_corpus_lines = []
@@ -96,12 +89,10 @@ def main():
             "ATTENZIONE: Una delle due fonti di dati (abstract o RDF) è vuota dopo il filtraggio. Il bilanciamento non è possibile.")
         final_corpus_lines = unique_abstracts + unique_rdf_chunks
     else:
-        # Troviamo la dimensione della categoria più piccola
         min_category_size = min(len(unique_abstracts), len(unique_rdf_chunks))
 
         stats['balancing_base_size'] = min_category_size
 
-        # Campioniamo casualmente da entrambe le categorie per avere la stessa dimensione
         random.shuffle(unique_abstracts)
         random.shuffle(unique_rdf_chunks)
 
@@ -113,7 +104,6 @@ def main():
 
     random.shuffle(final_corpus_lines)
 
-    # --- STAMPA DELLE STATISTICHE FINALI ---
     print("\n--- Statistiche del Processo di Creazione Corpus ---")
     print(f"Film totali processati: {stats['total_films_processed']:,}")
     print("-" * 40)
@@ -135,7 +125,6 @@ def main():
     print(f"  - Righe totali nel corpus finale: {len(final_corpus_lines):,}")
     print("=" * 50)
 
-    # --- SALVATAGGIO DEL FILE (in una nuova cartella) ---
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     print(f"\n4/4 - Salvataggio di {len(final_corpus_lines)} righe di testo pulito e bilanciato in '{OUTPUT_FILE}'...")

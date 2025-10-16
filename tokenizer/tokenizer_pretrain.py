@@ -29,9 +29,9 @@ MLM_TOKEN = "<MLM>"
 EXTRA_ID_TOKENS = [f"<extra_id_{i}>" for i in range(150)]
 
 ALL_SPECIAL_TOKENS = [
-    PAD_TOKEN, UNK_TOKEN, SOT_TOKEN, EOT_TOKEN, SUBJ_TOKEN, PRED_TOKEN, OBJ_TOKEN,
-    TEXT_TO_RDF_TOKEN, RDF_TO_TEXT_TOKEN, CONTINUE_RDF_TOKEN, MLM_TOKEN, MASK_TOKEN
-] + EXTRA_ID_TOKENS
+                         PAD_TOKEN, UNK_TOKEN, SOT_TOKEN, EOT_TOKEN, SUBJ_TOKEN, PRED_TOKEN, OBJ_TOKEN,
+                         TEXT_TO_RDF_TOKEN, RDF_TO_TEXT_TOKEN, CONTINUE_RDF_TOKEN, MLM_TOKEN, MASK_TOKEN
+                     ] + EXTRA_ID_TOKENS
 
 print("1/5 - Inizializzazione di un nuovo tokenizer BPE...")
 tokenizer = Tokenizer(BPE(unk_token=UNK_TOKEN))
@@ -56,13 +56,16 @@ trainer_special_tokens = [
 ]
 trainer = BpeTrainer(vocab_size=VOCAB_SIZE, special_tokens=trainer_special_tokens)
 
+
 def corpus_iterator():
     if not os.path.exists(CORPUS_FILE):
-        raise FileNotFoundError(f"File del corpus puro non trovato in '{CORPUS_FILE}'. Esegui create_pretrain_corpus.py.")
+        raise FileNotFoundError(
+            f"File del corpus puro non trovato in '{CORPUS_FILE}'. Esegui create_pretrain_corpus.py.")
     print(f"Lettura dal corpus puro '{os.path.basename(CORPUS_FILE)}'...")
     with open(CORPUS_FILE, 'r', encoding='utf-8') as f:
         for line in tqdm(f, desc="Processing corpus"):
             yield line.strip()
+
 
 print("4/5 - Addestramento del tokenizer dal corpus PURO...")
 tokenizer.train_from_iterator(corpus_iterator(), trainer=trainer)
@@ -71,13 +74,13 @@ print("Addestramento BPE completato.")
 vocab_size_before_add = tokenizer.get_vocab_size()
 print(f"Dimensione del vocabolario dopo BPE training: {vocab_size_before_add} (target era {VOCAB_SIZE})")
 
-
 # Ora aggiungiamo TUTTI i token speciali. Molti sono già presenti dai `special_tokens` del trainer.
 # Questa chiamata aggiunge solo quelli mancanti (principalmente i token di task e le maschere).
 print(f"Aggiunta di {len(ALL_SPECIAL_TOKENS)} token speciali al vocabolario finale...")
 tokenizer.add_special_tokens(ALL_SPECIAL_TOKENS)
 vocab_size_after_add = tokenizer.get_vocab_size()
-print(f"Dimensione finale del vocabolario: {vocab_size_after_add}. Aggiunti {vocab_size_after_add - vocab_size_before_add} nuovi token speciali.")
+print(
+    f"Dimensione finale del vocabolario: {vocab_size_after_add}. Aggiunti {vocab_size_after_add - vocab_size_before_add} nuovi token speciali.")
 
 print(f"5/5 - Salvataggio del tokenizer in '{TOKENIZER_FILE}'...")
 tokenizer.save(TOKENIZER_FILE)

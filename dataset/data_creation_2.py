@@ -44,7 +44,6 @@ def fetch_and_process_film_data(endpoint_url, total_limit, page_size):
         offset = i * page_size
         print(f"--- Esecuzione query pagina {i + 1}/{num_pages} (OFFSET {offset}, LIMIT {page_size}) ---")
 
-
         query = f"""
             PREFIX dbo: <http://dbpedia.org/ontology/>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>

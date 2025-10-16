@@ -1,7 +1,7 @@
 import os
 from collections import Counter
 
-INPUT_DIR = "training_data_cleaned"
+INPUT_DIR = "training_data_cleaned_1"
 
 TEXT_TO_RDF_TOKEN = "<Text2RDF>"
 RDF_TO_TEXT_TOKEN = "<RDF2Text>"

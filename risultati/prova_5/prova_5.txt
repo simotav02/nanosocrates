@@ -1,3 +1,6 @@
+UGUALE A PROVA 1 MA CON MLA E ROPE IN FINE TUNING
+
+
 CONFIGURAZIONE
 from pathlib import Path
 
@@ -1696,4 +1699,3 @@ Validating Full-finetune (Beam): 100%|██████████████
   PREDICTED: starring
 
 ==================================================
-(.venv) simonasibio@MacBook-Air-di-Simona-2 architecture_MLA_RoPE %

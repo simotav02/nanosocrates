@@ -1,0 +1,24 @@
+# run the following command in your terminal from the project's root directory:
+# pip install -r requirements.txt
+
+
+# Core Deep Learning & Logging
+torch
+tensorboard
+
+# Hugging Face Ecosystem (Tokenization, Models, Metrics)
+tokenizers
+transformers
+evaluate
+
+# Specific dependencies for the 'evaluate' library metrics
+# (often required for BLEU, ROUGE, and METEOR)
+sacrebleu
+rouge_score
+nltk
+
+# Utilities for Data Processing and Tensor Manipulation
+numpy
+einops
+tqdm
+SPARQLWrapper

@@ -1,5 +1,3 @@
-# tokenizer_pretrain.py (Versione Finale con Stampe Chiarificatrici)
-
 import re
 import os
 from tokenizers import Tokenizer
@@ -13,7 +11,7 @@ VOCAB_SIZE = 32000
 CORPUS_FILE = "../dataset_pretrain/pretrain_corpus_data_v3/pretrain_corpus.txt"
 TOKENIZER_FILE = "film_corpus_bpe_tokenizer_t5_3.json"
 
-# Definiamo TUTTI i token speciali che useremo nel progetto
+# Define all special tokens used in the project.
 PAD_TOKEN = "<PAD>"
 UNK_TOKEN = "<UNK>"
 SOT_TOKEN = "<SOT>"
@@ -33,23 +31,27 @@ ALL_SPECIAL_TOKENS = [
                          TEXT_TO_RDF_TOKEN, RDF_TO_TEXT_TOKEN, CONTINUE_RDF_TOKEN, MLM_TOKEN, MASK_TOKEN
                      ] + EXTRA_ID_TOKENS
 
+# Initialize a new BPE tokenizer.
 print("1/5 - Inizializzazione di un nuovo tokenizer BPE...")
 tokenizer = Tokenizer(BPE(unk_token=UNK_TOKEN))
 
+# Configure the pre-tokenizer to handle special tokens, RDF prefixes, and byte-level fallback.
 print("2/5 - Configurazione del pre-tokenizer...")
 special_tokens_pattern = '|'.join([re.escape(token) for token in ALL_SPECIAL_TOKENS])
 prefixes = [r'dbr:', r'dbo:', r'rdf:', r'rdfs:']
 rdf_chars_pattern = r'[_:]'
 unified_split_pattern = '|'.join([special_tokens_pattern] + prefixes + [rdf_chars_pattern])
 
+# The pre-tokenizer first splits by our custom pattern, then uses ByteLevel for the rest.
 tokenizer.pre_tokenizer = Sequence([
     Split(pattern=unified_split_pattern, behavior="isolated"),
     ByteLevel(add_prefix_space=False)
 ])
 tokenizer.decoder = ByteLevelDecoder()
 
+# Prepare the BPE trainer.
 print("3/5 - Preparazione del trainer BPE...")
-# Il trainer BPE deve conoscere i token strutturali di base per non spezzarli
+# The trainer must know the base special tokens to prevent them from being merged during training.
 trainer_special_tokens = [
     PAD_TOKEN, UNK_TOKEN, SOT_TOKEN, EOT_TOKEN, SUBJ_TOKEN, PRED_TOKEN, OBJ_TOKEN,
     'dbr:', 'dbo:', 'rdf:', 'rdfs:', '_', ':'
@@ -58,6 +60,7 @@ trainer = BpeTrainer(vocab_size=VOCAB_SIZE, special_tokens=trainer_special_token
 
 
 def corpus_iterator():
+    """A memory-efficient generator to iterate over the corpus file line by line."""
     if not os.path.exists(CORPUS_FILE):
         raise FileNotFoundError(
             f"File del corpus puro non trovato in '{CORPUS_FILE}'. Esegui create_pretrain_corpus.py.")
@@ -67,28 +70,29 @@ def corpus_iterator():
             yield line.strip()
 
 
+# Train the tokenizer from the raw text corpus.
 print("4/5 - Addestramento del tokenizer dal corpus PURO...")
 tokenizer.train_from_iterator(corpus_iterator(), trainer=trainer)
 print("Addestramento BPE completato.")
-# --- NUOVA STAMPA CHIARIFICATRICE (la tua osservazione) ---
 vocab_size_before_add = tokenizer.get_vocab_size()
 print(f"Dimensione del vocabolario dopo BPE training: {vocab_size_before_add} (target era {VOCAB_SIZE})")
 
-# Ora aggiungiamo TUTTI i token speciali. Molti sono già presenti dai `special_tokens` del trainer.
-# Questa chiamata aggiunge solo quelli mancanti (principalmente i token di task e le maschere).
+# Add any remaining special tokens (like task tokens and extra_ids) that were not in the trainer's initial list.
 print(f"Aggiunta di {len(ALL_SPECIAL_TOKENS)} token speciali al vocabolario finale...")
 tokenizer.add_special_tokens(ALL_SPECIAL_TOKENS)
 vocab_size_after_add = tokenizer.get_vocab_size()
 print(
     f"Dimensione finale del vocabolario: {vocab_size_after_add}. Aggiunti {vocab_size_after_add - vocab_size_before_add} nuovi token speciali.")
 
+# Save the trained tokenizer to a JSON file.
 print(f"5/5 - Salvataggio del tokenizer in '{TOKENIZER_FILE}'...")
 tokenizer.save(TOKENIZER_FILE)
 print("Tokenizer salvato con successo.")
 
+# Final verification to ensure the tokenizer was saved and loaded correctly.
 print("\n--- Verifica del Tokenizer Finale ---")
 loaded_tokenizer = Tokenizer.from_file(TOKENIZER_FILE)
 print(f"Verifica dimensione vocabolario caricato: {loaded_tokenizer.get_vocab_size()}")
 assert loaded_tokenizer.token_to_id('<extra_id_99>') is not None, "FAIL: I token <extra_id_X> non sono nel vocabolario!"
 assert loaded_tokenizer.token_to_id('<Text2RDF>') is not None, "FAIL: I token di task non sono nel vocabolario!"
-print("✅ Tutti i token speciali sono presenti e correttamente registrati.")
+print("Tutti i token speciali sono presenti e correttamente registrati.")

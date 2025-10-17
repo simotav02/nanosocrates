@@ -22,83 +22,131 @@ from dataset_lib import NanoSocratesDataset
 
 def greedy_decode(model, source_or_encoder_output, source_mask, tokenizer, max_len, device,
                   repetition_penalty: float = 1.2):
+    """
+    Performs greedy decoding to generate a sequence from the model.
+    At each step, it selects the token with the highest probability.
+
+    Args:
+        model: The transformer model.
+        source_or_encoder_output: Either the source tensor or the pre-computed encoder output.
+        source_mask: The padding mask for the source tensor.
+        tokenizer: The tokenizer.
+        max_len: The maximum length of the generated sequence.
+        device: The device to run on ('cuda', 'cpu').
+        repetition_penalty: Penalty for repeating tokens to discourage loops.
+    Returns:
+        The generated sequence of token IDs.
+    """
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
 
+    # If the encoder output is not pre-computed, compute it.
     if isinstance(source_or_encoder_output, torch.Tensor) and source_or_encoder_output.dim() == 3:
         encoder_output = source_or_encoder_output
     else:
         encoder_output = model.encode(source_or_encoder_output, source_mask)
 
+    # Initialize the decoder input with the <SOT> token.
     decoder_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
 
+    # Autoregressively generate tokens until max_len or <EOT> is reached.
     while decoder_input.size(1) < max_len:
         decoder_mask = (decoder_input == pad_idx).to(device)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
-        logits = model.projection_layer(out[:, -1])
+        logits = model.projection_layer(out[:, -1])  # Get logits for the last token
+
+        # Apply repetition penalty to the logits to discourage repeating tokens.
         if repetition_penalty != 1.0:
             for token_id in set(decoder_input[0].tolist()):
                 if logits[0, token_id] > 0:
                     logits[0, token_id] /= repetition_penalty
                 else:
                     logits[0, token_id] *= repetition_penalty
+
+        # Select the token with the highest logit value (greedy choice).
         _, next_word = torch.max(logits, dim=1)
 
+        # Append the new token to the decoder input for the next step.
         next_word_tensor = torch.empty(1, 1, dtype=torch.long, device=device).fill_(next_word.item())
         decoder_input = torch.cat([decoder_input, next_word_tensor], dim=1)
 
-        if next_word.item() == eot_idx: break
+        if next_word.item() == eot_idx:
+            break
     return decoder_input.squeeze(0)
 
 
 def beam_search_decode(model, beam_size, source_or_encoder_output, source_mask, tokenizer, max_len, device,
                        repetition_penalty=1.2):
+    """
+    Performs beam search decoding to generate a sequence.
+    It explores multiple hypotheses (beams) at each step to find a more optimal sequence.
+    """
     sot_idx, eot_idx, pad_idx = tokenizer.token_to_id('<SOT>'), tokenizer.token_to_id('<EOT>'), tokenizer.token_to_id(
         '<PAD>')
 
+    # If the encoder output is not pre-computed, compute it.
     if isinstance(source_or_encoder_output, torch.Tensor) and source_or_encoder_output.dim() == 3:
         encoder_output = source_or_encoder_output
     else:
         encoder_output = model.encode(source_or_encoder_output, source_mask)
 
+    # Initialize with a single beam: (<SOT> token, score 0.0)
     initial_input = torch.empty(1, 1, dtype=torch.long, device=device).fill_(sot_idx)
     beams = [(initial_input, 0.0)]
     completed_beams = []
 
+    # Autoregressively generate tokens up to max_len.
     for _ in range(max_len - 1):
         new_beams, has_active_beams = [], False
         for candidate_seq, candidate_score in beams:
+            # If a beam ends with <EOT>, move it to completed beams and stop expanding it.
             if candidate_seq[0, -1].item() == eot_idx:
                 completed_beams.append((candidate_seq, candidate_score));
                 continue
             has_active_beams = True
+
+            # Predict the next token probabilities for the current beam.
             decoder_mask = (candidate_seq == pad_idx).to(device)
             out = model.decode(encoder_output, source_mask, candidate_seq, decoder_mask)
             logits = model.projection_layer(out[:, -1])
+
+            # Apply repetition penalty.
             if repetition_penalty != 1.0:
                 for token_id in set(candidate_seq[0].tolist()):
                     if logits[0, token_id] > 0:
                         logits[0, token_id] /= repetition_penalty
                     else:
                         logits[0, token_id] *= repetition_penalty
+
             log_probs = torch.log_softmax(logits, dim=-1)
             topk_log_probs, topk_idx = torch.topk(log_probs, beam_size, dim=-1)
+
+            # Create new beams from the top k predictions.
             for i in range(beam_size):
                 token_idx = topk_idx[0, i].unsqueeze(0).unsqueeze(0)
                 token_log_prob = topk_log_probs[0, i].item()
                 new_seq = torch.cat([candidate_seq, token_idx], dim=1)
                 new_beams.append((new_seq, candidate_score + token_log_prob))
+
         if not has_active_beams: break
+
+        # Select the top `beam_size` beams, normalized by length to avoid favoring shorter sequences.
         beams = sorted(new_beams, key=lambda x: x[1] / (x[0].size(1) ** 0.7), reverse=True)[:beam_size]
+
+        # If all active beams have finished, stop the search early.
         if all(b[0][0, -1].item() == eot_idx for b in beams):
             completed_beams.extend(beams);
             break
+
     if not completed_beams: completed_beams = beams
+
+    # Return the best beam, re-sorted by length-normalized score.
     best_beam = sorted(completed_beams, key=lambda x: x[1] / (x[0].size(1) ** 0.7), reverse=True)[0]
     return best_beam[0].squeeze()
 
 
 def parse_rdf_triples_for_strict_eval(text: str) -> set:
+    """Parses a string to extract RDF triples into a set for exact match evaluation."""
     triples = set()
     pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
     matches = pattern.findall(text)
@@ -109,6 +157,7 @@ def parse_rdf_triples_for_strict_eval(text: str) -> set:
 
 
 def parse_rdf_triples_for_entity_eval(text: str) -> (list, list, list):
+    """Parses a string to extract subjects, predicates, and objects into separate lists for entity-level evaluation."""
     subjects, predicates, objects = [], [], []
     pattern = re.compile(r"<SOT>\s*<SUBJ>\s*(.*?)\s*<PRED>\s*(.*?)\s*<OBJ>\s*(.*?)\s*<EOT>")
     matches = pattern.findall(text)
@@ -120,9 +169,14 @@ def parse_rdf_triples_for_entity_eval(text: str) -> (list, list, list):
 
 def run_validation(model, validation_ds, tokenizer, max_len, device, global_step, writer, num_examples_to_run,
                    decode_strategy_info, phase):
+    """
+    Runs the validation loop, computes metrics, and logs results.
+    The behavior changes based on the training `phase`.
+    """
     model.eval()
 
     if phase == 'pretrain':
+        # --- Pre-training validation focuses on loss and token-level accuracy ---
         total_val_loss, total_correct_tokens, total_tokens = 0, 0, 0
         loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id('<PAD>')).to(device)
         qualitative_examples = []
@@ -130,21 +184,27 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
         with torch.no_grad():
             for i, batch in enumerate(tqdm(validation_ds, desc=f"Validating {phase}")):
+                # Move batch to device
                 encoder_input, decoder_input = batch['encoder_input'].to(device), batch['decoder_input'].to(device)
                 encoder_mask, decoder_mask = batch['encoder_mask'].to(device), batch['decoder_mask'].to(device)
                 label = batch['label'].to(device)
 
+                # Forward pass
                 encoder_output = model.encode(encoder_input, encoder_mask)
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
                 proj_output = model.projection_layer(decoder_output)
+
+                # Calculate loss
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
                 total_val_loss += loss.item()
 
+                # Calculate token accuracy
                 _, predicted_tokens = torch.max(proj_output, dim=-1)
                 non_pad_mask = (label != tokenizer.token_to_id('<PAD>'))
                 total_correct_tokens += (predicted_tokens.eq(label) & non_pad_mask).sum().item()
                 total_tokens += non_pad_mask.sum().item()
 
+                # Collect some examples for qualitative evaluation
                 if i < num_qualitative_examples:
                     source_text = batch["src_text"][0]
                     target_text = batch["tgt_text"][0]
@@ -158,6 +218,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                         "predicted": predicted_text
                     })
 
+        # --- Log pre-training metrics ---
         avg_val_loss = total_val_loss / len(validation_ds) if validation_ds else 0
         token_accuracy = total_correct_tokens / total_tokens if total_tokens > 0 else 0
 
@@ -178,6 +239,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             writer.add_scalar(f'validation/{phase}/token_accuracy', token_accuracy, global_step)
 
     elif phase in ['decoder_tune', 'full_finetune']:
+        # --- Fine-tuning validation uses more complex, task-specific metrics ---
         source_texts, expected, predicted_raw, predicted_clean = [], [], [], []
 
         token_tp, token_fp, token_fn = 0, 0, 0
@@ -188,6 +250,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         desc = f"Validating {phase.replace('_', '-').capitalize()} ({decode_strategy_info.get('strategy', 'greedy').capitalize()})"
         with torch.no_grad():
             for batch in tqdm(validation_ds, desc=desc):
+                # Move batch to device
                 encoder_input = batch['encoder_input'].to(device)
                 encoder_mask = batch['encoder_mask'].to(device)
                 decoder_input = batch['decoder_input'].to(device)
@@ -197,13 +260,14 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 target_text = batch['tgt_text'][0]
                 label_tokens = label[0]
 
-                # --- Calcolo della loss (CORRETTO) ---
+                # --- Loss Calculation (using teacher forcing) ---
                 encoder_output = model.encode(encoder_input, encoder_mask)
                 decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
                 proj_output = model.projection_layer(decoder_output)
                 loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
                 total_val_loss += loss.item()
 
+                # --- Generation using specified strategy (greedy/beam) ---
                 strategy = decode_strategy_info.get('strategy', 'greedy')
                 repetition_penalty = decode_strategy_info.get('repetition_penalty', 1.2)
 
@@ -215,6 +279,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                     model_out_tokens = greedy_decode(model, encoder_output, encoder_mask, tokenizer, max_len, device,
                                                      repetition_penalty)
 
+                # --- Token-level F1 Score (diagnostic metric) ---
                 pred_len = model_out_tokens.size(0)
                 true_len = label_tokens[label_tokens != pad_id].size(0)
                 max_len_comp = max(pred_len, true_len)
@@ -229,8 +294,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 token_fp += ((padded_preds != padded_trues) & is_pred_real).sum().item()
                 token_fn += ((padded_preds != padded_trues) & is_true_real).sum().item()
 
-                predicted_text_raw = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=False)
-                predicted_text_clean = tokenizer.decode(model_out_tokens.cpu().numpy(), skip_special_tokens=True)
+                # --- Store results for aggregated metrics ---
+                predicted_text_raw = tokenizer.decode(model_out_tokens.cpu().numpy(),
+                                                      skip_special_tokens=False)  # Includes special tokens
+                predicted_text_clean = tokenizer.decode(model_out_tokens.cpu().numpy(),
+                                                        skip_special_tokens=True)  # Excludes special tokens
 
                 source_texts.append(source_text)
                 expected.append(target_text)
@@ -239,20 +307,23 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
 
         print("\n" + "=" * 50 + f"\n--- METRICHE DI VALIDAZIONE {phase.upper()} ---\n" + "=" * 50)
 
+        # --- General Metrics ---
         avg_val_loss = total_val_loss / len(validation_ds) if validation_ds else 0
         print(f"\n--- Metrica Generale ---")
         print(f"  Average Validation Loss: {avg_val_loss:.4f}")
         if writer: writer.add_scalar(f'validation/{phase}/loss', avg_val_loss, global_step)
 
+        # --- Token-level Metrics ---
         token_precision = token_tp / (token_tp + token_fp) if (token_tp + token_fp) > 0 else 0
         token_recall = token_tp / (token_tp + token_fn) if (token_tp + token_fn) > 0 else 0
         token_f1 = 2 * (token_precision * token_recall) / (token_precision + token_recall) if (
-                                                                                                          token_precision + token_recall) > 0 else 0
+                                                                                                      token_precision + token_recall) > 0 else 0
 
         print("\n--- Metriche a livello di Token (diagnostica) ---")
         print(f"  Precision: {token_precision:.4f}, Recall: {token_recall:.4f}, F1-Score: {token_f1:.4f}")
         if writer: writer.add_scalar(f'validation/{phase}/token_f1', token_f1, global_step)
 
+        # --- Entity-level Metrics (for RDF tasks) ---
         all_pred_subjects, all_true_subjects = [], []
         all_pred_predicates, all_true_predicates = [], []
         all_pred_objects, all_true_objects = [], []
@@ -269,6 +340,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 all_pred_objects.extend(pred_o)
 
         def calculate_entity_metrics(predictions, ground_truths):
+            """Helper function to calculate P, R, F1 for lists of entities."""
             pred_counter, true_counter = Counter(predictions), Counter(ground_truths)
             tp = sum((pred_counter & true_counter).values())
             fp = sum(pred_counter.values()) - tp
@@ -286,9 +358,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
         p, r, f1 = calculate_entity_metrics(all_pred_objects, all_true_objects)
         print(f"  Objects     | Precision: {p:.4f}, Recall: {r:.4f}, F1-Score: {f1:.4f}")
 
+        # --- Task-Specific Metrics ---
         tasks = ["Text2RDF", "RDF2Text", "CONTINUERDF", "MLM"]
         qualitative_examples_by_task = {}
 
+        # Group predictions by task type based on special tokens in the source.
         task_data = {task: {'expected': [], 'predicted': [], 'predicted_raw': [], 'source': []} for task in tasks}
         for src, exp, pred_clean, pred_raw in zip(source_texts, expected, predicted_clean, predicted_raw):
             task_name = next((task for task in tasks if f"<{task}>" in src), "Unknown")
@@ -303,6 +377,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             print(f"\n--- Metriche Task: {task} ({len(data['expected'])} esempi) ---")
 
             if task == "RDF2Text":
+                # For RDF-to-text, use standard text generation metrics.
                 bleu = evaluate.load("bleu").compute(predictions=data['predicted'],
                                                      references=[[e] for e in data['expected']])
                 rouge = evaluate.load("rouge").compute(predictions=data['predicted'], references=data['expected'])
@@ -310,6 +385,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                 print(f"  BLEU: {bleu['bleu']:.4f}, ROUGE-L: {rouge['rougeL']:.4f}, METEOR: {meteor['meteor']:.4f}")
 
             elif task in ["Text2RDF", "CONTINUERDF"]:
+                # For text-to-RDF, use strict triple matching for P, R, F1.
                 tp_s, p_s, a_s = 0, 0, 0
                 for exp, pred_raw in zip(data['expected'], data['predicted_raw']):
                     exp_triples = parse_rdf_triples_for_strict_eval(exp)
@@ -325,32 +401,26 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                     f"  Precision (Strict): {precision:.4f}, Recall (Strict): {recall:.4f}, F1-Score (Strict): {f1:.4f}")
 
             elif task == "MLM":
-                correct_strict = 0
-                correct_soft = 0
+                # For Masked Language Modeling, use accuracy.
+                correct_strict, correct_soft = 0, 0
                 for exp, pred in zip(data['expected'], data['predicted']):
-                    exp_clean = exp.strip().lower()
-                    pred_clean = pred.strip().lower()
-
-                    if exp_clean == pred_clean:
-                        correct_strict += 1
-
+                    exp_clean, pred_clean = exp.strip().lower(), pred.strip().lower()
+                    if exp_clean == pred_clean: correct_strict += 1
+                    # Soft accuracy allows for matching just the predicate name without the 'dbo:' prefix.
                     if exp_clean.startswith('dbo:'):
-                        exp_predicate = exp_clean.split(':', 1)[1]
-                        if exp_predicate == pred_clean:
-                            correct_soft += 1
+                        if exp_clean.split(':', 1)[1] == pred_clean: correct_soft += 1
                     else:
-                        if exp_clean == pred_clean:
-                            correct_soft += 1
+                        if exp_clean == pred_clean: correct_soft += 1
 
                 accuracy_strict = correct_strict / len(data['expected']) if data['expected'] else 0
                 accuracy_soft = correct_soft / len(data['expected']) if data['expected'] else 0
-
                 print(f"  Accuracy (Strict): {accuracy_strict:.4f}")
                 print(f"  Accuracy (Soft): {accuracy_soft:.4f}")
                 if writer:
                     writer.add_scalar(f'validation/{phase}/{task}/accuracy_strict', accuracy_strict, global_step)
                     writer.add_scalar(f'validation/{phase}/{task}/accuracy_soft', accuracy_soft, global_step)
 
+            # --- Store one qualitative example per task ---
             if data['expected']:
                 if task not in qualitative_examples_by_task:
                     qualitative_examples_by_task[task] = {
@@ -359,6 +429,7 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
                         "predicted": data['predicted'][0] if task in ["RDF2Text", "MLM"] else data['predicted_raw'][0]
                     }
 
+        # --- Print Qualitative Examples ---
         print("\n" + "=" * 50 + "\n--- ESEMPI QUALITATIVI ---\n" + "=" * 50)
         for task, ex in qualitative_examples_by_task.items():
             print(f"\n--- Task: {task} ---")
@@ -367,10 +438,11 @@ def run_validation(model, validation_ds, tokenizer, max_len, device, global_step
             print(f"  PREDICTED: {ex['predicted']}")
         print("\n" + "=" * 50)
 
-    model.train()
+    model.train()  # Set model back to training mode.
 
 
 def get_ds(config, phase: str):
+    """Loads, splits, and prepares the dataset and dataloaders for a given phase."""
     tokenizer = Tokenizer.from_file(str(Path(config['tokenizer_file'])))
     source_path = os.path.join(config['data_dir'], "train.source")
     target_path = os.path.join(config['data_dir'], "train.target")
@@ -379,6 +451,7 @@ def get_ds(config, phase: str):
     with open(source_path, 'r', encoding='utf-8') as f_src, open(target_path, 'r', encoding='utf-8') as f_tgt:
         raw_ds = [{'source': s.strip(), 'target': t.strip()} for s, t in zip(f_src, f_tgt) if s.strip()]
 
+    # Stratified split for fine-tuning to ensure task distribution is maintained in train/val sets.
     if phase in ['decoder_tune', 'full_finetune']:
         print(f"\n--- Esecuzione dello Split Stratificato per {phase.upper()} (90/10) ---")
 
@@ -404,6 +477,7 @@ def get_ds(config, phase: str):
             val_raw.extend(items[split_point:])
             print(f"Categoria '{cat}': {len(items[:split_point])} train / {len(items[split_point:])} val")
     else:
+        # Simple random split for pre-training.
         print(f"\n--- Esecuzione dello Split Casuale Semplice per {phase.capitalize()} (90/10) ---")
         random.shuffle(raw_ds)
         split_point = int(0.9 * len(raw_ds))
@@ -412,23 +486,31 @@ def get_ds(config, phase: str):
     random.shuffle(train_raw)
     random.shuffle(val_raw)
     print(f"Totale: {len(train_raw)} esempi di training, {len(val_raw)} esempi di validazione.\n")
+
+    # Create Dataset and DataLoader instances.
     train_ds = NanoSocratesDataset(train_raw, tokenizer, config['seq_len'])
     val_ds = NanoSocratesDataset(val_raw, tokenizer, config['seq_len'])
     train_dl = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=2, pin_memory=True)
-    val_batch_size = 1
+    val_batch_size = 1  # Validation is done one example at a time for generation.
     val_dl = DataLoader(val_ds, batch_size=val_batch_size, shuffle=False)
     return train_dl, val_dl, tokenizer
 
 
 def train_model(config, phase: str):
+    """
+    The main training function.
+    It sets up the model, optimizer, scheduler, and runs the training and validation loops.
+    """
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"--- INIZIO FASE: {phase.upper()} ---\nUsing device: {device}")
     Path(config['model_folder']).mkdir(parents=True, exist_ok=True)
     train_dataloader, val_dataloader, tokenizer = get_ds(config, phase)
 
+    # Build the transformer model from config.
     model_config = {k: v for k, v in config.items() if k in ["d_model", "N", "h", "dropout", "d_ff", "seq_len"]}
     model = build_transformer(vocab_size=tokenizer.get_vocab_size(), multi_head=False, **model_config).to(device)
 
+    # Freeze encoder weights if specified (for the 'decoder_tune' phase).
     if config.get("freeze_encoder", False):
         print("\n--- CONGELAMENTO DEI PESI DELL'ENCODER ATTIVO ---")
         for name, param in model.named_parameters():
@@ -444,6 +526,7 @@ def train_model(config, phase: str):
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=config['lr'], eps=1e-9,
                                   weight_decay=0.01)
 
+    # Handle preloading of model weights and optimizer state to resume training.
     initial_epoch, global_step = 0, 0
     if config.get('preload'):
         preload_path = config['preload']
@@ -454,6 +537,7 @@ def train_model(config, phase: str):
             state = torch.load(preload_path, map_location=device)
             model.load_state_dict(state['model_state_dict'])
 
+            # Logic to reset or continue counters based on the phase transition.
             is_new_finetune_phase = phase in ['decoder_tune', 'full_finetune']
             if is_new_finetune_phase and 'pretrain' in preload_path:
                 print("Inizio prima fase di fine-tuning (decoder_tune): contatori resettati.")
@@ -469,6 +553,7 @@ def train_model(config, phase: str):
                     optimizer.load_state_dict(state['optimizer_state_dict'])
             print(f"Il training parte dall'epoca {initial_epoch}")
 
+    # Set up the learning rate scheduler.
     scheduler_type = config.get('scheduler_type', 'cosine_restarts')
     total_steps = len(train_dataloader) * config['num_epochs']
 
@@ -493,6 +578,7 @@ def train_model(config, phase: str):
 
     GRADIENT_CLIP_VALUE = 1.0
 
+    # --- Main Training Loop ---
     for epoch in range(initial_epoch, config['num_epochs']):
         model.train()
         total_epoch_loss = 0.0
@@ -500,35 +586,47 @@ def train_model(config, phase: str):
 
         for batch in batch_iterator:
             optimizer.zero_grad(set_to_none=True)
+
+            # Move batch to device
             encoder_input, decoder_input = batch['encoder_input'].to(device), batch['decoder_input'].to(device)
             encoder_mask, decoder_mask = batch['encoder_mask'].to(device), batch['decoder_mask'].to(device)
             label = batch['label'].to(device)
 
+            # Forward pass
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
             proj_output = model.projection_layer(decoder_output)
+
+            # Calculate loss
             loss = loss_fn(proj_output.view(-1, tokenizer.get_vocab_size()), label.view(-1))
 
+            # Backward pass and optimization step
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), GRADIENT_CLIP_VALUE)
+            torch.nn.utils.clip_grad_norm_(model.parameters(),
+                                           GRADIENT_CLIP_VALUE)  # Gradient clipping prevents exploding gradients.
             optimizer.step()
 
+            # Update learning rate if using a per-step scheduler.
             if scheduler_type == 'linear_warmup':
                 scheduler.step()
 
+            # Log step loss
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
             writer.add_scalar(f'train_loss/step/{phase}', loss.item(), global_step)
             total_epoch_loss += loss.item()
             global_step += 1
 
+        # Log epoch-level metrics
         avg_epoch_loss = total_epoch_loss / len(train_dataloader)
         print(f"--- Epoch {epoch:02d} finished. Average Training Loss: {avg_epoch_loss:.4f} ---")
         writer.add_scalar(f'train_loss/epoch_avg/{phase}', avg_epoch_loss, epoch)
         writer.add_scalar(f'learning_rate/{phase}', optimizer.param_groups[0]['lr'], epoch)
 
+        # Update learning rate if using a per-epoch scheduler.
         if scheduler_type == 'cosine_restarts':
             scheduler.step()
 
+        # Run validation and save model checkpoint periodically.
         if (epoch + 1) % config.get('validate_every_n_epochs', 1) == 0:
             print(f"\n--- Running validation for Epoch {epoch:02d} ---")
 
@@ -545,6 +643,7 @@ def train_model(config, phase: str):
     writer.close()
     print(f"--- FASE {phase.upper()} COMPLETATA ---")
 
+    # Run a final evaluation with beam search after the last fine-tuning phase.
     if phase == 'full_finetune':
         print("\n--- RUNNING FINAL EVALUATION WITH BEAM SEARCH ---")
         final_writer = SummaryWriter(config['experiment_name'] + "_final_beam_eval")
@@ -555,15 +654,18 @@ def train_model(config, phase: str):
 
 
 if __name__ == '__main__':
+    # --- Main script entry point ---
     warnings.filterwarnings("ignore");
-    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'  # For MacOS DataLoader compatibility
 
+    # Parse command-line arguments to select the training phase.
     parser = argparse.ArgumentParser(description='Train the NanoSocrates model in phases.')
     parser.add_argument('--phase', type=str, required=True,
                         choices=['pretrain', 'decoder_tune', 'full_finetune'],
                         help="La fase di training da eseguire.")
     args = parser.parse_args()
 
+    # Load the configuration for the selected phase.
     if args.phase == 'pretrain':
         config = get_pretrain_config()
     elif args.phase == 'decoder_tune':
@@ -573,4 +675,5 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Fase '{args.phase}' non riconosciuta.")
 
+    # Start the training process.
     train_model(config, args.phase)
